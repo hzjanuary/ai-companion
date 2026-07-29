@@ -73,6 +73,13 @@ Out of scope:
   `0002_telegram_ingress` and passed webhook idempotency, outbox publication,
   Stream acknowledgement/reclaim, and polling cursor tests without Telegram
   credentials or public network calls.
+- [x] SPEC-005: normalized Telegram messages and membership events into typed
+  conversation state, participants, messages, deterministic eligibility, and a
+  PostgreSQL processing ledger before Redis acknowledgement.
+- [x] SPEC-005: added bounded same-conversation/topic context selection,
+  dedicated consumer runtime, migration `0003_conversation_domain`, pure and
+  PostgreSQL/Redis integration tests, documentation, and CI coverage without
+  Telegram, LLM, or outgoing-message calls.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -92,6 +99,11 @@ Out of scope:
   inbox/outbox and Redis Streams; downstream work must deduplicate by stable
   incoming update ID. Keep webhook lifecycle, polling, and dispatch explicit
   separate runtimes.
+- 2026-07-29: Keep conversation business processing idempotent through a
+  PostgreSQL ledger keyed by durable incoming update ID. Normalize external
+  Telegram data at the infrastructure boundary and acknowledge Redis only after
+  the transaction commits; record deterministic eligibility before future model
+  work.
 
 ## Validation
 
@@ -121,8 +133,18 @@ Out of scope:
   `/`, `/health`, `/live`, `/ready`, and `/docs`; controlled database and
   enabled-queue Redis failures returned safe `/ready` HTTP 503 responses. No
   Telegram credential, webhook, or public Telegram call was used.
+- SPEC-005 focused proof: 30 settings, normalization, eligibility, and context
+  tests passed with Ruff and strict mypy. PostgreSQL/Redis ingress validation
+  migrated to `0003_conversation_domain` and passed the durable conversation
+  worker, duplicate acknowledgement, pending reclaim, ingress, webhook,
+  polling, and reclaim tests without credentials or external network calls.
+- SPEC-005 runtime proof: `docker build --tag january-backend:spec-005 .` and
+  `docker compose config` passed. After applying migration `0003` to an
+  isolated Compose PostgreSQL service, `/`, `/health`, `/live`, `/ready`, and
+  `/docs` each returned HTTP 200 on host port 8003; only project-owned services
+  were stopped afterward.
 
 ## Result
 
-SPEC-001 through SPEC-004 are implemented. This plan remains active for the
-Telegram MVP; business consumption and SPEC-005 behavior remain unimplemented.
+SPEC-001 through SPEC-005 are implemented. This plan remains active for the
+Telegram MVP; response generation and delivery behavior remain unimplemented.

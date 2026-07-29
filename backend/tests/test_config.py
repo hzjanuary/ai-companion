@@ -14,6 +14,7 @@ def test_settings_defaults() -> None:
     assert settings.log_level == "INFO"
     assert settings.resolved_database_url.drivername == "postgresql+asyncpg"
     assert settings.telegram_delivery_mode == "disabled"
+    assert settings.context_recent_message_limit == 20
 
 
 def test_webhook_delivery_requires_complete_redacted_configuration() -> None:
@@ -45,6 +46,23 @@ def test_webhook_delivery_requires_complete_redacted_configuration() -> None:
     ],
 )
 def test_invalid_ingress_settings_are_rejected(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("JANUARY_CONTEXT_RECENT_MESSAGE_LIMIT", "0"),
+        ("JANUARY_CONTEXT_REPLY_CHAIN_DEPTH", "-1"),
+        ("JANUARY_CONTEXT_TOKEN_BUDGET", "1"),
+        ("JANUARY_CONTEXT_MESSAGE_CHARACTER_LIMIT", "1"),
+    ],
+)
+def test_invalid_context_settings_are_rejected(
     monkeypatch: pytest.MonkeyPatch, name: str, value: str
 ) -> None:
     monkeypatch.setenv(name, value)

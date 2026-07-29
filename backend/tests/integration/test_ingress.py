@@ -16,16 +16,19 @@ from app.domain.persistence import (
     Platform,
     PlatformConnectionStatus,
 )
+from app.infrastructure.database.conversation import SqlAlchemyConversationProcessor
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.ingress import SqlAlchemyDurableIngressRepository
 from app.infrastructure.database.models import (
     AssistantModel,
+    ConversationProcessingRecordModel,
     IncomingPlatformUpdateModel,
     IngressOutboxEventModel,
     PlatformConnectionModel,
 )
 from app.infrastructure.queue.redis_streams import RedisIngressQueue
 from app.main import create_app
+from app.runtime.conversation_worker import consume_once
 from app.runtime.ingress_outbox_dispatcher import dispatch_once
 from app.runtime.telegram_poller import poll_once
 
@@ -42,7 +45,8 @@ async def clear(database: Database, queue: RedisIngressQueue | None = None) -> N
     async with database.engine.begin() as connection:
         await connection.execute(
             text(
-                "TRUNCATE ingress_outbox_events, incoming_platform_updates, "
+                "TRUNCATE conversation_processing_records, ingress_outbox_events, "
+                "incoming_platform_updates, "
                 "polling_cursors, messages, participants, conversations, "
                 "platform_connections, assistants CASCADE"
             )
@@ -77,8 +81,110 @@ def envelope(connection_id: UUID, update_id: str = "4000000000") -> IngressEnvel
         supported=True,
         ingress_source=IngressSource.WEBHOOK,
         received_at=datetime.now(UTC),
-        raw_payload={"update_id": int(update_id), "message": {"message_id": 1}},
+        raw_payload={
+            "update_id": int(update_id),
+            "message": {
+                "message_id": 4_000_000_000,
+                "date": 1_700_000_000,
+                "chat": {"id": 4_000_000_001, "type": "private"},
+                "from": {
+                    "id": 4_000_000_002,
+                    "first_name": "Tester",
+                    "is_bot": False,
+                },
+                "text": "hello",
+            },
+        },
     )
+
+
+@pytest.mark.integration
+@pytest.mark.ingress_integration
+@pytest.mark.conversation_integration
+def test_conversation_worker_commits_before_ack_and_deduplicates(
+    settings: Settings,
+) -> None:
+    async def scenario() -> None:
+        database = Database(settings)
+        queue = RedisIngressQueue(settings)
+        await database.start()
+        await clear(database, queue)
+        connection_id = await seed_connection(database)
+        repository = SqlAlchemyDurableIngressRepository(
+            database.session_factory, settings.ingress_event_schema_version
+        )
+        accepted = await repository.accept(envelope(connection_id))
+        async with database.session_factory() as session:
+            outbox_id = await session.scalar(
+                select(IngressOutboxEventModel.id).where(
+                    IngressOutboxEventModel.incoming_update_id
+                    == accepted.incoming_update_id
+                )
+            )
+        assert outbox_id is not None
+        event = await repository.event_for(outbox_id)
+        assert event is not None
+        assert await dispatch_once(settings, repository, queue) == 1
+        processor = SqlAlchemyConversationProcessor(database.session_factory)
+        assert (
+            await consume_once(
+                settings, database, queue, processor, "conversation-test"
+            )
+            == 1
+        )
+        async with database.session_factory() as session:
+            assert (
+                await session.scalar(
+                    select(func.count(ConversationProcessingRecordModel.id))
+                )
+                == 1
+            )
+        await queue.publish(event)
+        assert (
+            await consume_once(
+                settings, database, queue, processor, "conversation-test"
+            )
+            == 1
+        )
+        async with database.session_factory() as session:
+            assert (
+                await session.scalar(
+                    select(func.count(ConversationProcessingRecordModel.id))
+                )
+                == 1
+            )
+        await queue.publish(event)
+
+        class FailingProcessor:
+            async def process(self, *_: object) -> None:
+                raise RuntimeError("temporary database failure")
+
+        with pytest.raises(RuntimeError, match="temporary database failure"):
+            await consume_once(
+                settings,
+                database,
+                queue,
+                FailingProcessor(),  # type: ignore[arg-type]
+                "failing-conversation-test",
+                reclaim=False,
+            )
+        await asyncio.sleep(0.02)
+        queue._settings.redis_reclaim_idle_ms = 1  # type: ignore[misc]
+        assert (
+            await consume_once(
+                settings,
+                database,
+                queue,
+                processor,
+                "recovery-conversation-test",
+            )
+            == 1
+        )
+        await queue.aclose()
+        await clear(database)
+        await database.stop()
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.integration

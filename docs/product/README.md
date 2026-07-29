@@ -20,6 +20,7 @@ contract, implementation, and executable tests.
 - [SPEC-002 Database and Persistence](specs/SPEC-002-database-and-persistence.md)
 - [SPEC-003 Telegram Platform Adapter](specs/SPEC-003-telegram-platform-adapter.md)
 - [SPEC-004 Telegram Ingress, Queue, and Idempotency](specs/SPEC-004-telegram-ingress-queue-idempotency.md)
+- [SPEC-005 Conversation Domain and Context](specs/SPEC-005-conversation-domain-and-context.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule

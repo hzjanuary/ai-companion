@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     ingress_outbox_batch_size: int = Field(default=50, ge=1, le=500)
     ingress_outbox_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
     ingress_event_schema_version: int = Field(default=1, ge=1, le=100)
+    conversation_consumer_name: str | None = None
+    conversation_worker_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
+    context_recent_message_limit: int = Field(default=20, ge=1, le=100)
+    context_reply_chain_depth: int = Field(default=5, ge=0, le=20)
+    context_token_budget: int = Field(default=1200, ge=64, le=32_000)
+    context_message_character_limit: int = Field(default=2000, ge=64, le=20_000)
+    context_max_history_age_days: int = Field(default=30, ge=1, le=365)
 
     @field_validator("database_url", mode="before")
     @classmethod

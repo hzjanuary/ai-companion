@@ -20,6 +20,11 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.domain.conversation import (
+    EligibilityReason,
+    MembershipStatus,
+    ProcessingOutcome,
+)
 from app.domain.persistence import (
     AssistantStatus,
     ConversationStatus,
@@ -111,6 +116,15 @@ class ConversationModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
     )
+    assistant_membership_status: Mapped[MembershipStatus | None] = mapped_column(
+        string_enum(MembershipStatus, "assistant_membership_status")
+    )
+    assistant_membership_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_platform_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class ParticipantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -138,6 +152,16 @@ class ParticipantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=dict,
         server_default=sql_text("'{}'::jsonb"),
         nullable=False,
+    )
+    membership_status: Mapped[MembershipStatus] = mapped_column(
+        string_enum(MembershipStatus, "participant_membership_status"),
+        default=MembershipStatus.MEMBER,
+        nullable=False,
+    )
+    is_bot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_membership_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
     )
 
 
@@ -173,6 +197,19 @@ class MessageModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         string_enum(MessageProcessingStatus, "message_processing_status"),
         default=MessageProcessingStatus.PENDING,
         nullable=False,
+    )
+    platform_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    platform_thread_id: Mapped[str | None] = mapped_column(String(255))
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mentions_assistant: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    replies_to_assistant: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    eligible: Mapped[bool | None] = mapped_column(Boolean)
+    eligibility_reason: Mapped[EligibilityReason | None] = mapped_column(
+        string_enum(EligibilityReason, "message_eligibility_reason")
     )
     reply_to: Mapped["MessageModel | None"] = relationship(
         remote_side="MessageModel.id", foreign_keys=[reply_to_message_id]
@@ -257,3 +294,27 @@ class PollingCursorModel(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class ConversationProcessingRecordModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "conversation_processing_records"
+    __table_args__ = (UniqueConstraint("incoming_update_id"),)
+
+    incoming_update_id: Mapped[UUID] = mapped_column(
+        ForeignKey("incoming_platform_updates.id", ondelete="RESTRICT"), nullable=False
+    )
+    outcome: Mapped[ProcessingOutcome] = mapped_column(
+        string_enum(ProcessingOutcome, "conversation_processing_outcome"),
+        nullable=False,
+    )
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), index=True
+    )
+    message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), index=True
+    )
+    eligible: Mapped[bool | None] = mapped_column(Boolean)
+    eligibility_reason: Mapped[EligibilityReason | None] = mapped_column(
+        string_enum(EligibilityReason, "processing_eligibility_reason")
+    )
+    permanent_error: Mapped[str | None] = mapped_column(String(64))

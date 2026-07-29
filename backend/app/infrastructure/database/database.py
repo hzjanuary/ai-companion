@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0002_telegram_ingress"
+                        and revision == "0003_conversation_domain"
                     )
         except Exception:
             return False

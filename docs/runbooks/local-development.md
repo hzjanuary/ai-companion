@@ -81,6 +81,24 @@ uv run python -m app.runtime.ingress_outbox_dispatcher
 `remove --drop-pending-updates` is required to request pending-update removal.
 The poller refuses to run when Telegram reports an existing webhook.
 
+## Conversation Processing
+
+The conversation consumer is separate from the API, poller, and outbox
+dispatcher. It reads Redis references and requires PostgreSQL and Redis:
+
+```bash
+uv run python -m app.runtime.conversation_worker
+```
+
+Run its isolated integration proof with:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-conversation.sh
+```
+
+It uses synthetic durable Telegram updates only. No Telegram credential,
+network request, LLM, or outgoing message is involved.
+
 ## Validation
 
 Run the repository's canonical local validation command:

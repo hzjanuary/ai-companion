@@ -55,3 +55,9 @@ the first behavior that needs them.
 SPEC-004 keeps Telegram raw payloads and SDK contracts in infrastructure. The
 application ingress envelope is platform independent; PostgreSQL owns durable
 deduplication and outbox intent; Redis Streams transports references only.
+
+SPEC-005 consumes those references in a dedicated runtime. Telegram payloads
+are normalized before application policy runs; PostgreSQL commits normalized
+conversation state and the idempotency ledger before Redis acknowledgement.
+Context readers return application values rather than ORM models, raw payloads,
+or credentials. No LLM or outgoing-delivery dependency crosses this boundary.

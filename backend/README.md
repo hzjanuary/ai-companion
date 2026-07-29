@@ -41,6 +41,26 @@ app.runtime.telegram_poller` and `uv run python -m
 app.runtime.ingress_outbox_dispatcher`. Explicit webhook operations use
 `./scripts/telegram-webhook.sh`; none run during API startup.
 
+## Conversation Worker
+
+The worker consumes durable ingress references into normalized conversations,
+participants, messages, membership state, deterministic eligibility, and
+bounded context. It does not call an LLM or send messages. Start it only as a
+dedicated process after PostgreSQL and Redis are ready:
+
+```bash
+uv run python -m app.runtime.conversation_worker
+```
+
+Run its synthetic PostgreSQL/Redis proof with:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-conversation.sh
+```
+
+The worker commits business state and its idempotency ledger before it
+acknowledges Redis. It logs identifiers and outcomes, not message content.
+
 Every response includes `X-Request-ID`. A syntactically valid incoming value is
 preserved; otherwise one is generated. Unhandled failures return a safe JSON
 error with the same request ID.
