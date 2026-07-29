@@ -12,3 +12,4 @@ documents here as real choices are accepted, then index them in this file.
 ## Accepted Decisions
 
 - [0001 Backend Bootstrap Boundaries](0001-backend-bootstrap-boundaries.md)
+- [0002 PostgreSQL Persistence Foundation](0002-postgresql-persistence-foundation.md)

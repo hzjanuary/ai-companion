@@ -24,6 +24,27 @@ The service listens on `http://127.0.0.1:8000`. Available endpoints are `/`,
 `/health`, `/live`, `/ready`, and `/docs`. `.env` is local-only; it must not
 contain or commit production secrets.
 
+## Database And Migrations
+
+Start PostgreSQL and apply the schema before expecting readiness to succeed:
+
+```bash
+docker compose up -d database
+uv run alembic upgrade head
+```
+
+Validate the database lifecycle and PostgreSQL integration tests with:
+
+```bash
+./scripts/validate-db.sh
+```
+
+It starts the project-owned database, upgrades, runs integration tests,
+downgrades to base, re-upgrades, and stops that database service without
+removing its volume. `/live` never checks PostgreSQL; `/ready` returns a safe
+`503` when the database or required schema is unavailable; `/health` reports
+the application and database component states.
+
 ## Validation
 
 Run the repository's canonical local validation command:

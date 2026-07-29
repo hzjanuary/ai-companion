@@ -53,7 +53,12 @@ Out of scope:
   `.tools/uv`, and otherwise fails with a concise setup message. Resolution
   behavior and the canonical command passed from a normal shell without a
   `.tools` PATH mutation.
-- [ ] SPEC-002 database and persistence foundation.
+- [x] SPEC-002: PostgreSQL 16, SQLAlchemy async, asyncpg, Alembic, UUID/UTC
+  primitives, JSONB metadata, core models, repository ports, and initial
+  migration implemented.
+- [x] SPEC-002: `validate-db.sh` upgraded, integration-tested, downgraded, and
+  re-upgraded the project PostgreSQL database. Docker Compose runtime verified
+  healthy endpoints and controlled database-readiness failure.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -64,6 +69,9 @@ Out of scope:
   SPEC-001; the product contract prohibits empty future folders.
 - 2026-07-29: Keep `uv` as the dependency manager while making the validation
   entrypoint discover an optional repository-local `uv` executable.
+- 2026-07-29: Use PostgreSQL 16 with SQLAlchemy async, asyncpg, Alembic, UUID
+  primary keys, UTC timestamps, JSONB metadata, and constrained string enums;
+  persist these rules in ADR 0002.
 
 ## Validation
 
@@ -76,8 +84,12 @@ Out of scope:
   and a local `uv` installation; Docker image build and `docker compose config`
   passed. `scripts/test-resolve-uv.sh` covers PATH preference, local fallback,
   and missing-tool failure.
+- SPEC-002 proof: `JANUARY_DB_HOST_PORT=5433 ./scripts/validate-db.sh` passed
+  PostgreSQL migration upgrade, two integration tests, downgrade to base, and
+  re-upgrade. Compose runtime returned 200 for all required endpoints; after
+  stopping only its database service, `/ready` returned a safe 503 response.
 
 ## Result
 
-SPEC-001 bootstrap is implemented and validated. This plan remains active for
-the Telegram MVP; SPEC-002 and later product behavior remain unimplemented.
+SPEC-001 and SPEC-002 are implemented and validated. This plan remains active
+for the Telegram MVP; SPEC-003 and later product behavior remain unimplemented.

@@ -8,3 +8,29 @@ services:
     environment:
       JANUARY_ENVIRONMENT: local
       JANUARY_LOG_LEVEL: INFO
+      JANUARY_DATABASE_HOST: database
+      JANUARY_DATABASE_PORT: 5432
+      JANUARY_DATABASE_NAME: ${JANUARY_DATABASE_NAME:-january}
+      JANUARY_DATABASE_USER: ${JANUARY_DATABASE_USER:-january}
+      JANUARY_DATABASE_PASSWORD: ${JANUARY_DATABASE_PASSWORD:-january-local}
+    depends_on:
+      database:
+        condition: service_healthy
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${JANUARY_DATABASE_NAME:-january}
+      POSTGRES_USER: ${JANUARY_DATABASE_USER:-january}
+      POSTGRES_PASSWORD: ${JANUARY_DATABASE_PASSWORD:-january-local}
+    ports:
+      - "${JANUARY_DB_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - january-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  january-postgres-data:

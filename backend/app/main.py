@@ -1,23 +1,42 @@
 """FastAPI application factory and ASGI entry point."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.infrastructure.database.database import Database
 from app.interface.http.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.interface.http.models import ErrorResponse
 from app.interface.http.routes import create_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Construct the HTTP application without connecting to future services."""
+    """Construct the HTTP application without connecting during import."""
 
     configured_settings = settings or get_settings()
     configure_logging(configured_settings.log_level)
-    app = FastAPI(title=configured_settings.app_name, version="0.1.0")
+    database = Database(configured_settings)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await database.start()
+        app.state.database = database
+        try:
+            yield
+        finally:
+            await database.stop()
+
+    app = FastAPI(
+        title=configured_settings.app_name,
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+    app.state.database = database
     app.add_middleware(RequestIdMiddleware)
     app.include_router(create_router(configured_settings))
 

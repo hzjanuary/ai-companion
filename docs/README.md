@@ -39,6 +39,10 @@ and working-memory structure around that truth; it does not install upstream
 - `runbooks/local-development.md`: backend setup, validation, and local runtime.
 - `plans/active/telegram-social-ai-mvp.md`: durable MVP execution plan.
 - `decisions/0001-backend-bootstrap-boundaries.md`: accepted bootstrap architecture decision.
+- `product/specs/SPEC-002-database-and-persistence.md`: accepted persistence
+  outcome, model boundaries, and validation requirements.
+- `decisions/0002-postgresql-persistence-foundation.md`: accepted PostgreSQL
+  persistence strategy.
 
 ## Source-Repository Indexes
 

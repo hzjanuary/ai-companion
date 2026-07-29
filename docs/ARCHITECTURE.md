@@ -19,9 +19,8 @@ application code coordinates use cases; infrastructure implements external
 ports; interfaces translate transport input and output; runtime surfaces wire
 the application together.
 
-SPEC-001 contains only the runtime and HTTP interface required to operate the
-foundation. It intentionally does not create empty domain, application, or
-infrastructure directories.
+SPEC-002 adds concrete domain records, application persistence ports, and
+PostgreSQL infrastructure. It still avoids speculative modules.
 
 ## Boundary Rules
 
@@ -40,6 +39,9 @@ infrastructure directories.
 ```text
 backend/app/
   core/          settings, logging, request context
+  domain/        platform-independent persistence records and enums
+  application/   persistence ports
+  infrastructure/database/ async engine, models, repositories, migrations
   interface/http/ response models, routes, middleware
   main.py        application factory and runtime entry point
 ```

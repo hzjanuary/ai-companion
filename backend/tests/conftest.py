@@ -25,6 +25,16 @@ class AppClient:
             return await client.get(path, headers=headers)
 
 
+class FakeDatabase:
+    def __init__(self, ready: bool) -> None:
+        self.ready = ready
+
+    async def is_ready(self) -> bool:
+        return self.ready
+
+
 @pytest.fixture
 def client() -> AppClient:
-    return AppClient(create_app(Settings(environment="test")))
+    app = create_app(Settings(environment="test"))
+    app.state.database = FakeDatabase(ready=True)
+    return AppClient(app)

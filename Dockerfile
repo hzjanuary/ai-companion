@@ -6,10 +6,11 @@ COPY --from=uv /uv /uvx /bin/
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock alembic.ini ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY backend ./backend
+COPY alembic ./alembic
 RUN uv sync --locked --no-dev
 
 FROM python:3.12-slim AS runtime
@@ -20,6 +21,8 @@ ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/backend" PYTHONUNBUFFERED=1
 
 COPY --from=builder --chown=january:january /app/.venv /app/.venv
 COPY --chown=january:january backend ./backend
+COPY --chown=january:january alembic.ini ./
+COPY --chown=january:january alembic ./alembic
 
 USER january
 EXPOSE 8000

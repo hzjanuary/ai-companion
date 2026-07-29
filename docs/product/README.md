@@ -15,6 +15,10 @@ The upstream `repository-harness` contract lives in the root README, current
 workflow and architecture documents, lasting decisions, optional orchestration
 contract, implementation, and executable tests.
 
+## Accepted Specifications
+
+- [SPEC-002 Database and Persistence](specs/SPEC-002-database-and-persistence.md)
+
 ## Update Rule
 
 When behavior changes:

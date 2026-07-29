@@ -14,3 +14,26 @@ class ErrorResponse(BaseModel):
     error_type: Literal["internal_error"]
     message: str
     request_id: str
+
+
+class DatabaseComponentResponse(BaseModel):
+    status: Literal["ok", "unavailable"]
+
+
+class HealthResponse(BaseModel):
+    service: str = Field(examples=["January"])
+    status: Literal["ok", "degraded"]
+    application: DatabaseComponentResponse
+    database: DatabaseComponentResponse
+
+
+class ReadinessResponse(BaseModel):
+    service: str = Field(examples=["January"])
+    status: Literal["ok"] = "ok"
+    database: DatabaseComponentResponse
+
+
+class DependencyUnavailableResponse(BaseModel):
+    error_type: Literal["dependency_unavailable"] = "dependency_unavailable"
+    message: str = "Database is unavailable"
+    request_id: str

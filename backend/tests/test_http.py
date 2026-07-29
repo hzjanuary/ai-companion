@@ -1,17 +1,52 @@
 from fastapi import HTTPException
 
+from app.core.config import Settings
 from app.core.request_context import get_request_id
 from app.main import create_app
-from tests.conftest import AppClient
+from tests.conftest import AppClient, FakeDatabase
 
 
-def test_operational_endpoints_succeed(client: AppClient) -> None:
-    for path in ("/", "/health", "/live", "/ready"):
+def test_root_and_live_succeed_without_database_checks(client: AppClient) -> None:
+    for path in ("/", "/live"):
         response = client.get(path)
 
         assert response.status_code == 200
         assert response.json() == {"service": "January", "status": "ok"}
         assert response.headers["X-Request-ID"]
+
+
+def test_health_and_ready_succeed_with_healthy_database(client: AppClient) -> None:
+    health = client.get("/health")
+    ready = client.get("/ready")
+
+    assert health.status_code == 200
+    assert health.json() == {
+        "service": "January",
+        "status": "ok",
+        "application": {"status": "ok"},
+        "database": {"status": "ok"},
+    }
+    assert ready.status_code == 200
+    assert ready.json() == {
+        "service": "January",
+        "status": "ok",
+        "database": {"status": "ok"},
+    }
+
+
+def test_ready_returns_safe_503_when_database_is_unavailable() -> None:
+    app = create_app(Settings(environment="test"))
+    app.state.database = FakeDatabase(ready=False)
+
+    response = AppClient(app).get("/ready", headers={"X-Request-ID": "db-123"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error_type": "dependency_unavailable",
+        "message": "Database is unavailable",
+        "request_id": "db-123",
+    }
+    assert response.headers["X-Request-ID"] == "db-123"
 
 
 def test_supplied_request_id_is_returned(client: AppClient) -> None:

@@ -9,6 +9,18 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: january
+          POSTGRES_USER: january
+          POSTGRES_PASSWORD: january-local
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U january -d january"
+          --health-interval 2s --health-timeout 3s --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -20,3 +32,15 @@ jobs:
           python-version: "3.12"
       - run: uv sync --all-groups --locked
       - run: ./scripts/validate.sh
+      - run: uv run alembic upgrade head
+        env:
+          JANUARY_ENVIRONMENT: test
+          JANUARY_DATABASE_HOST: 127.0.0.1
+      - run: uv run pytest -m integration
+        env:
+          JANUARY_ENVIRONMENT: test
+          JANUARY_DATABASE_HOST: 127.0.0.1
+      - run: uv run alembic downgrade base && uv run alembic upgrade head
+        env:
+          JANUARY_ENVIRONMENT: test
+          JANUARY_DATABASE_HOST: 127.0.0.1
