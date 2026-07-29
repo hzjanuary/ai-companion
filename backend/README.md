@@ -24,6 +24,13 @@ Use `uv run alembic downgrade base` only for local validation; reapply with
 Alembic-schema check, returning a safe `503` response when unavailable.
 `/health` reports application and database component states.
 
+## Telegram Adapter
+
+Telegram is disabled by default. The typed adapter implements only `getMe`,
+`sendMessage`, `sendSticker`, and `getChatMember`; webhook and polling methods
+are deferred. Use `./scripts/verify-telegram.sh` only with explicit enabled
+configuration and a real token. It calls `getMe` and prints safe identity data.
+
 Every response includes `X-Request-ID`. A syntactically valid incoming value is
 preserved; otherwise one is generated. Unhandled failures return a safe JSON
 error with the same request ID.

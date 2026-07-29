@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.database.database import Database
+from app.infrastructure.telegram.adapter import create_telegram_adapter
 from app.interface.http.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.interface.http.models import ErrorResponse
 from app.interface.http.routes import create_router
@@ -21,14 +22,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configured_settings = settings or get_settings()
     configure_logging(configured_settings.log_level)
     database = Database(configured_settings)
+    telegram = create_telegram_adapter(configured_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.start()
         app.state.database = database
+        app.state.telegram = telegram
         try:
             yield
         finally:
+            if telegram is not None:
+                await telegram.aclose()
             await database.stop()
 
     app = FastAPI(
@@ -37,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.database = database
+    app.state.telegram = telegram
     app.add_middleware(RequestIdMiddleware)
     app.include_router(create_router(configured_settings))
 

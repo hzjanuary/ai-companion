@@ -42,6 +42,7 @@ backend/app/
   domain/        platform-independent persistence records and enums
   application/   persistence ports
   infrastructure/database/ async engine, models, repositories, migrations
+  infrastructure/telegram/ typed Bot API HTTP adapter
   interface/http/ response models, routes, middleware
   main.py        application factory and runtime entry point
 ```

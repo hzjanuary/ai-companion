@@ -59,6 +59,13 @@ Out of scope:
 - [x] SPEC-002: `validate-db.sh` upgraded, integration-tested, downgraded, and
   re-upgraded the project PostgreSQL database. Docker Compose runtime verified
   healthy endpoints and controlled database-readiness failure.
+- [x] SPEC-003: typed, lifecycle-managed Telegram HTTP adapter implements
+  getMe, sendMessage, sendSticker, and getChatMember with mock-transport proof;
+  update delivery remains deferred.
+- [x] SPEC-003: normal validation passed 32 no-network tests and database
+  validation passed its migration lifecycle and two PostgreSQL integration
+  tests. Compose ran with Telegram disabled; all required HTTP endpoints
+  returned 200.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -72,6 +79,8 @@ Out of scope:
 - 2026-07-29: Use PostgreSQL 16 with SQLAlchemy async, asyncpg, Alembic, UUID
   primary keys, UTC timestamps, JSONB metadata, and constrained string enums;
   persist these rules in ADR 0002.
+- 2026-07-29: Use direct httpx Bot API calls with typed contracts, explicit
+  client ownership, token redaction, and no automatic outbound retries.
 
 ## Validation
 
@@ -88,8 +97,12 @@ Out of scope:
   PostgreSQL migration upgrade, two integration tests, downgrade to base, and
   re-upgrade. Compose runtime returned 200 for all required endpoints; after
   stopping only its database service, `/ready` returned a safe 503 response.
+- SPEC-003 proof: `pytest backend/tests/test_telegram_adapter.py -q` passed 15
+  mock-transport tests; `./scripts/validate.sh` passed 32 tests and static
+  gates; `verify-telegram.sh` safely rejected missing configuration.
 
 ## Result
 
-SPEC-001 and SPEC-002 are implemented and validated. This plan remains active
-for the Telegram MVP; SPEC-003 and later product behavior remain unimplemented.
+SPEC-001 through SPEC-003 are implemented and validated. This plan remains
+active for the Telegram MVP; SPEC-004 and later product behavior remain
+unimplemented.

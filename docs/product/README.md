@@ -18,6 +18,8 @@ contract, implementation, and executable tests.
 ## Accepted Specifications
 
 - [SPEC-002 Database and Persistence](specs/SPEC-002-database-and-persistence.md)
+- [SPEC-003 Telegram Platform Adapter](specs/SPEC-003-telegram-platform-adapter.md)
+- [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule
 

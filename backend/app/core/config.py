@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
@@ -30,6 +31,15 @@ class Settings(BaseSettings):
     database_max_overflow: int = Field(default=5, ge=0, le=50)
     database_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
     database_echo: bool = False
+    telegram_enabled: bool = False
+    telegram_bot_token: SecretStr | None = None
+    telegram_api_base_url: str = "https://api.telegram.org"
+    telegram_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    telegram_connect_timeout_seconds: float = Field(default=5, gt=0, le=30)
+    telegram_connection_limit: int = Field(default=10, ge=1, le=100)
+    telegram_user_agent: str = Field(
+        default="january/0.1", min_length=1, max_length=128
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -40,6 +50,22 @@ class Settings(BaseSettings):
         if url.drivername != "postgresql+asyncpg":
             raise ValueError("database_url must use the postgresql+asyncpg driver")
         return value
+
+    @field_validator("telegram_api_base_url")
+    @classmethod
+    def validate_telegram_api_base_url(cls, value: str) -> str:
+        url = urlparse(value)
+        if url.scheme not in {"http", "https"} or not url.netloc:
+            raise ValueError("telegram_api_base_url must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def require_telegram_token_when_enabled(self) -> "Settings":
+        if self.telegram_enabled and self.telegram_bot_token is None:
+            raise ValueError(
+                "telegram_bot_token is required when telegram_enabled is true"
+            )
+        return self
 
     @property
     def resolved_database_url(self) -> URL:

@@ -12,6 +12,11 @@ command and falls back to an executable at `.tools/uv` when one is present.
 When neither is available, it stops with an installation message before running
 any checks.
 
+Telegram remains disabled unless `JANUARY_TELEGRAM_ENABLED=true` and a token is
+provided. The normal validation suite uses mock transport only. An operator may
+run `./scripts/verify-telegram.sh` to explicitly perform a `getMe` identity
+check; it is not part of CI or canonical validation.
+
 ## Setup And Run
 
 ```bash
@@ -76,5 +81,6 @@ Stop it with:
 docker compose down
 ```
 
-The Compose scope intentionally contains only the backend. Readiness reflects
-only this application in SPEC-001.
+The Compose scope contains only the backend and PostgreSQL. Telegram remains
+disabled unless explicitly configured; readiness continues to reflect only the
+application and required database schema.
