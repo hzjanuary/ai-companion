@@ -89,3 +89,22 @@ Run it separately with `uv run python -m app.runtime.outbound_delivery_worker`.
 Known Telegram rejections are bounded retries; timeout, network, and malformed
 post-send outcomes are terminal `delivery_unknown` to avoid automatic duplicate
 sends. `./scripts/validate-delivery.sh` is synthetic and does not call Telegram.
+
+## Dedicated Demo
+
+The optional end-to-end demo is a polling-only workflow for one dedicated test
+bot and explicit numeric chat allowlist. It is disabled by default. Create the
+ignored local configuration and check it before any live operation:
+
+```bash
+./scripts/january-demo.sh init
+# Edit .env.demo with a dedicated test bot, provider/model, and test chat IDs.
+./scripts/january-demo.sh doctor
+./scripts/january-demo.sh bootstrap --confirm-live-telegram
+./scripts/january-demo.sh up --confirm-live-demo
+```
+
+`bootstrap` makes the only identity-verification Telegram request and requires
+explicit confirmation. The allowlist is enforced before conversation processing
+and again before outbound delivery. `./scripts/validate-demo.sh` is synthetic:
+it uses fake adapters and local PostgreSQL/Redis only.

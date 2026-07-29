@@ -153,6 +153,20 @@ It runs pytest, Ruff lint, Ruff formatting verification, mypy, Harness status
 and doctor checks, and `git diff --check` when Git is available. No external
 service or credential is required.
 
+## Guarded Telegram Demo
+
+The optional polling-only dedicated-bot workflow is documented in
+[`telegram-end-to-end-demo.md`](telegram-end-to-end-demo.md). It is disabled by
+default and uses the ignored `.env.demo` file created by
+`./scripts/january-demo.sh init`. The script requires explicit confirmation for
+live Telegram/provider checks and runs API, poller, dispatcher, conversation,
+planning, and outbound workers as separate local processes. Its synthetic
+validator uses only project PostgreSQL/Redis and fake adapters:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-demo.sh
+```
+
 ## Container Run
 
 ```bash

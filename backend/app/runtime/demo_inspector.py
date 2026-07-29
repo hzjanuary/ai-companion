@@ -1,0 +1,369 @@
+"""Read-only durable status for the guarded local demo."""
+
+import argparse
+import asyncio
+import json
+from uuid import UUID
+
+from sqlalchemy import func, select
+
+from app.core.config import Settings
+from app.infrastructure.database.database import Database
+from app.infrastructure.database.models import (
+    ConversationModel,
+    ConversationProcessingRecordModel,
+    IncomingPlatformUpdateModel,
+    IngressOutboxEventModel,
+    MessageModel,
+    ModelGenerationAttemptModel,
+    OutboundActionModel,
+    OutboundDeliveryAttemptModel,
+    OutboundRecoveryEventModel,
+    PlatformConnectionModel,
+    ResponsePlanModel,
+    ResponsePlanningJobModel,
+)
+
+RECOVERY_COMMAND_PREFIX = "uv run python -m app.runtime.outbound_recovery "
+
+
+async def inspect_latest(
+    settings: Settings,
+    *,
+    platform_update_id: str | None = None,
+    incoming_update_id: UUID | None = None,
+    conversation_id: UUID | None = None,
+    platform_chat_id: str | None = None,
+) -> dict[str, object]:
+    """Return identifiers and state only; message and provider contents stay private."""
+    database = Database(settings)
+    await database.start()
+    try:
+        async with database.session_factory() as session:
+            update_query = select(IncomingPlatformUpdateModel)
+            if platform_update_id is not None:
+                update_query = update_query.where(
+                    IncomingPlatformUpdateModel.platform_update_id == platform_update_id
+                )
+            if incoming_update_id is not None:
+                update_query = update_query.where(
+                    IncomingPlatformUpdateModel.id == incoming_update_id
+                )
+            if conversation_id is not None:
+                update_query = update_query.join(
+                    ConversationProcessingRecordModel
+                ).where(
+                    ConversationProcessingRecordModel.conversation_id == conversation_id
+                )
+            if platform_chat_id is not None:
+                update_query = (
+                    update_query.join(ConversationProcessingRecordModel)
+                    .join(ConversationModel)
+                    .where(
+                        ConversationModel.platform_conversation_id == platform_chat_id
+                    )
+                )
+            update = await session.scalar(
+                update_query.order_by(
+                    IncomingPlatformUpdateModel.received_at.desc()
+                ).limit(1)
+            )
+            counts = {
+                "incoming_updates": await session.scalar(
+                    select(func.count(IncomingPlatformUpdateModel.id))
+                ),
+                "conversation_records": await session.scalar(
+                    select(func.count(ConversationProcessingRecordModel.id))
+                ),
+                "planning_jobs": await session.scalar(
+                    select(func.count(ResponsePlanningJobModel.id))
+                ),
+                "response_plans": await session.scalar(
+                    select(func.count(ResponsePlanModel.id))
+                ),
+                "outbound_actions": await session.scalar(
+                    select(func.count(OutboundActionModel.id))
+                ),
+            }
+            action_status_rows = (
+                await session.execute(
+                    select(
+                        OutboundActionModel.status, func.count(OutboundActionModel.id)
+                    )
+                    .group_by(OutboundActionModel.status)
+                    .order_by(OutboundActionModel.status)
+                )
+            ).all()
+            action_statuses = {
+                status.value: count for status, count in action_status_rows
+            }
+            latest_error = await session.scalar(
+                select(OutboundActionModel.last_error_category)
+                .where(OutboundActionModel.last_error_category.is_not(None))
+                .order_by(OutboundActionModel.last_error_at.desc())
+                .limit(1)
+            )
+            connection = await session.scalar(
+                select(PlatformConnectionModel)
+                .where(
+                    PlatformConnectionModel.id
+                    == settings.telegram_platform_connection_id
+                )
+                .limit(1)
+            )
+            summary = {
+                "counts": counts,
+                "outbound_statuses": action_statuses,
+                "latest_outbound_error_category": latest_error,
+                "bot_identity": {
+                    "external_bot_id": connection.external_bot_id,
+                    "username": connection.configuration.get("username"),
+                }
+                if connection is not None
+                else None,
+            }
+            if update is None:
+                return {"latest_update": None, **summary}
+            record = await session.scalar(
+                select(ConversationProcessingRecordModel).where(
+                    ConversationProcessingRecordModel.incoming_update_id == update.id
+                )
+            )
+            outbox = await session.scalar(
+                select(IngressOutboxEventModel).where(
+                    IngressOutboxEventModel.incoming_update_id == update.id
+                )
+            )
+            message = (
+                await session.get(MessageModel, record.message_id)
+                if record and record.message_id
+                else None
+            )
+            jobs = (
+                list(
+                    await session.scalars(
+                        select(ResponsePlanningJobModel)
+                        .where(
+                            ResponsePlanningJobModel.conversation_processing_record_id
+                            == record.id
+                        )
+                        .order_by(ResponsePlanningJobModel.created_at)
+                    )
+                )
+                if record
+                else []
+            )
+            job_ids = [job.id for job in jobs]
+            attempts = (
+                list(
+                    await session.scalars(
+                        select(ModelGenerationAttemptModel)
+                        .where(ModelGenerationAttemptModel.planning_job_id.in_(job_ids))
+                        .order_by(
+                            ModelGenerationAttemptModel.planning_job_id,
+                            ModelGenerationAttemptModel.attempt_number,
+                        )
+                    )
+                )
+                if job_ids
+                else []
+            )
+            plans = (
+                list(
+                    await session.scalars(
+                        select(ResponsePlanModel)
+                        .where(ResponsePlanModel.planning_job_id.in_(job_ids))
+                        .order_by(ResponsePlanModel.created_at)
+                    )
+                )
+                if job_ids
+                else []
+            )
+            plan_ids = [plan.id for plan in plans]
+            actions = (
+                list(
+                    await session.scalars(
+                        select(OutboundActionModel)
+                        .where(OutboundActionModel.response_plan_id.in_(plan_ids))
+                        .order_by(
+                            OutboundActionModel.response_plan_id,
+                            OutboundActionModel.sequence_number,
+                        )
+                    )
+                )
+                if plan_ids
+                else []
+            )
+            action_ids = [action.id for action in actions]
+            deliveries = (
+                list(
+                    await session.scalars(
+                        select(OutboundDeliveryAttemptModel)
+                        .where(
+                            OutboundDeliveryAttemptModel.outbound_action_id.in_(
+                                action_ids
+                            )
+                        )
+                        .order_by(
+                            OutboundDeliveryAttemptModel.outbound_action_id,
+                            OutboundDeliveryAttemptModel.attempt_number,
+                        )
+                    )
+                )
+                if action_ids
+                else []
+            )
+            recoveries = (
+                list(
+                    await session.scalars(
+                        select(OutboundRecoveryEventModel)
+                        .where(
+                            OutboundRecoveryEventModel.outbound_action_id.in_(
+                                action_ids
+                            )
+                        )
+                        .order_by(OutboundRecoveryEventModel.created_at)
+                    )
+                )
+                if action_ids
+                else []
+            )
+            return {
+                "latest_update": {
+                    "id": str(update.id),
+                    "platform_update_id": update.platform_update_id,
+                    "received_at": update.received_at.isoformat(),
+                    "conversation_outcome": record.outcome.value if record else None,
+                    "conversation_id": str(record.conversation_id)
+                    if record and record.conversation_id
+                    else None,
+                },
+                "trace": {
+                    "ingress_outbox": {
+                        "id": str(outbox.id),
+                        "status": outbox.status.value,
+                        "attempt_count": outbox.attempt_count,
+                        "error_category": outbox.last_error_category,
+                    }
+                    if outbox
+                    else {"status": "not_created"},
+                    "message": {
+                        "id": str(message.id),
+                        "platform_message_id": message.platform_message_id,
+                        "direction": message.direction.value,
+                        "thread_id": message.platform_thread_id,
+                        "eligible": message.eligible,
+                        "eligibility_reason": message.eligibility_reason.value
+                        if message.eligibility_reason
+                        else None,
+                    }
+                    if message
+                    else {"status": "not_created"},
+                    "planning_jobs": [
+                        {
+                            "id": str(job.id),
+                            "status": job.status.value,
+                            "attempt_count": job.attempt_count,
+                            "provider": job.selected_provider.value
+                            if job.selected_provider
+                            else None,
+                            "model": job.selected_model,
+                            "error_category": job.last_error_category.value
+                            if job.last_error_category
+                            else None,
+                        }
+                        for job in jobs
+                    ],
+                    "generation_attempts": [
+                        {
+                            "id": str(attempt.id),
+                            "planning_job_id": str(attempt.planning_job_id),
+                            "attempt_number": attempt.attempt_number,
+                            "provider": attempt.provider.value,
+                            "model": attempt.model,
+                            "status": attempt.status.value,
+                            "error_category": attempt.error_category.value
+                            if attempt.error_category
+                            else None,
+                        }
+                        for attempt in attempts
+                    ],
+                    "response_plans": [
+                        {
+                            "id": str(plan.id),
+                            "planning_job_id": str(plan.planning_job_id),
+                            "should_respond": plan.should_respond,
+                            "reason_code": plan.reason_code.value,
+                            "reply_to_message_id": str(plan.reply_to_message_id)
+                            if plan.reply_to_message_id
+                            else None,
+                        }
+                        for plan in plans
+                    ],
+                    "outbound_actions": [
+                        {
+                            "id": str(action.id),
+                            "sequence": action.sequence_number,
+                            "kind": action.kind.value,
+                            "status": action.status.value,
+                            "error_category": action.last_error_category,
+                            "delivered_message_id": str(action.delivered_message_id)
+                            if action.delivered_message_id
+                            else None,
+                            "recovery_command": RECOVERY_COMMAND_PREFIX
+                            + f"{action.id} --confirm-possible-duplicate"
+                            if action.status.value == "delivery_unknown"
+                            else None,
+                        }
+                        for action in actions
+                    ],
+                    "delivery_attempts": [
+                        {
+                            "id": str(delivery.id),
+                            "outbound_action_id": str(delivery.outbound_action_id),
+                            "attempt_number": delivery.attempt_number,
+                            "status": delivery.status.value,
+                            "certainty": delivery.certainty.value,
+                            "error_category": delivery.error_category,
+                        }
+                        for delivery in deliveries
+                    ],
+                    "recovery_events": [
+                        {
+                            "id": str(recovery.id),
+                            "outbound_action_id": str(recovery.outbound_action_id),
+                            "event_type": recovery.event_type,
+                        }
+                        for recovery in recoveries
+                    ],
+                },
+                **summary,
+            }
+    finally:
+        await database.stop()
+
+
+async def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--telegram-update-id")
+    parser.add_argument("--incoming-update-id", type=UUID)
+    parser.add_argument("--conversation-id", type=UUID)
+    parser.add_argument("--chat-id")
+    args = parser.parse_args()
+    result = await inspect_latest(
+        Settings(),
+        platform_update_id=args.telegram_update_id,
+        incoming_update_id=args.incoming_update_id,
+        conversation_id=args.conversation_id,
+        platform_chat_id=args.chat_id,
+    )
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))

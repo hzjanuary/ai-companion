@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def worker_name(settings: Settings) -> str:
-    return f"planning-{socket.gethostname()}"
+    return f"{settings.planning_owner_name}-{socket.gethostname()}"
 
 
 async def consume_once(

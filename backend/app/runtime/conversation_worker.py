@@ -34,6 +34,7 @@ def consumer_name(settings: Settings) -> str:
 
 async def process_event(
     event: IngressQueueEvent,
+    settings: Settings,
     database: Database,
     processor: SqlAlchemyConversationProcessor,
 ) -> None:
@@ -71,6 +72,13 @@ async def process_event(
     except (TelegramNormalizationError, ValueError):
         await processor.reject_malformed(event)
         return
+    if (
+        settings.demo_live_enabled
+        and normalized.conversation.platform_conversation_id
+        not in settings.demo_allowed_chat_ids
+    ):
+        await processor.ignore_not_allowed(event)
+        return
     result = await processor.process(event, normalized)
     logger.info(
         "conversation event processed",
@@ -99,7 +107,7 @@ async def consume_once(
     entries = await queue.reclaim(name) if reclaim else []
     entries.extend(await queue.read_new(name))
     for entry_id, event in entries:
-        await process_event(event, database, processor)
+        await process_event(event, settings, database, processor)
         await queue.acknowledge(entry_id)
     return len(entries)
 

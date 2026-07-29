@@ -89,6 +89,11 @@ Out of scope:
   handoff, ordered PostgreSQL action leases and attempts, typed Telegram
   rendering, confirmed outgoing-message persistence, terminal ambiguous-send
   policy, explicit recovery audit, and an optional disabled sender runtime.
+- [x] SPEC-008: guarded polling-only local demo provides settings/template,
+  inbound and outbound allowlist suppression, idempotent bootstrap, discovery,
+  doctor, process lifecycle commands, durable inspection, CI, and synthetic
+  pipeline proof. Dedicated-bot/provider operation remains an explicit
+  operator-owned manual acceptance step and is not CI evidence.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -169,6 +174,18 @@ Out of scope:
   Docker built `january-backend:spec-007`; the disabled stack returned 200 for
   `/`, `/health`, `/live`, `/ready`, and `/docs`, and a stopped database yielded
   safe `/ready` 503 output. No public Telegram or model call occurred.
+- SPEC-008 current proof: `./scripts/validate.sh` passed 81 no-network tests,
+  Ruff lint/format, strict mypy, Harness checks, and `git diff --check`.
+  `JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380
+  ./scripts/validate-demo.sh` passed 22 settings tests and five dedicated
+  PostgreSQL/Redis integration tests: fake-identity bootstrap idempotency and
+  mismatch rejection, ingress-to-confirmed-delivery pipeline, replay
+  idempotency, denied chat suppression, and polling webhook conflict. The
+  accepted database, ingress, conversation, planning, and delivery validators
+  also passed. Docker built `january-backend:spec-008`; the isolated disabled
+  Compose runtime returned 200 for `/`, `/health`, `/live`, `/ready`, and
+  `/docs`, then was removed. No Telegram identity, update, send, or provider
+  call was made.
 
 ## Result
 

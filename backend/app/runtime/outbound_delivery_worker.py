@@ -74,6 +74,24 @@ async def consume_once(
                     )
                     continue
                 conversation, reply, participants = resolved
+                # The demo allowlist is a defense in depth boundary.  Inbound
+                # processing normally prevents these actions from existing,
+                # but a queued action must never escape after configuration or
+                # data changes.
+                if (
+                    settings.demo_live_enabled
+                    and conversation.platform_conversation_id
+                    not in settings.demo_allowed_chat_ids
+                ):
+                    await repository.finalize(
+                        action.id,
+                        owner,
+                        OutboundActionStatus.SKIPPED,
+                        DeliveryAttemptStatus.REJECTED,
+                        DeliveryCertainty.NOT_SENT,
+                        error_category="conversation_not_allowed",
+                    )
+                    continue
                 capability = (
                     PlatformCapability.SEND_TEXT
                     if action.kind == OutboundActionKind.TEXT

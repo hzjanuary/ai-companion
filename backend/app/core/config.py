@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     llm_retry_min_delay_seconds: float = Field(default=0.25, gt=0, le=30)
     llm_retry_max_delay_seconds: float = Field(default=2, gt=0, le=120)
     planning_job_batch_size: int = Field(default=10, ge=1, le=100)
+    planning_owner_name: str = Field(default="planning", min_length=1, max_length=255)
     planning_job_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
     planning_job_lease_seconds: int = Field(default=60, ge=5, le=3600)
     prompt_version: str = Field(default="spec-006-v1", min_length=1, max_length=64)
@@ -130,6 +131,10 @@ class Settings(BaseSettings):
     telegram_sticker_mapping: dict[str, str] = Field(default_factory=dict)
     telegram_delivery_test_chat_id: str | None = None
     telegram_live_delivery_verification_enabled: bool = False
+    demo_live_enabled: bool = False
+    demo_live_telegram_verification_enabled: bool = False
+    demo_allowed_chat_ids: tuple[str, ...] = ()
+    demo_runtime_directory: str = ".runtime/january-demo"
 
     @field_validator("telegram_sticker_mapping")
     @classmethod
@@ -146,6 +151,25 @@ class Settings(BaseSettings):
                 "telegram_sticker_mapping values must be nonblank and <=255"
             )
         return value
+
+    @field_validator("demo_allowed_chat_ids", mode="before")
+    @classmethod
+    def validate_demo_allowed_chat_ids(cls, value: object) -> tuple[str, ...]:
+        if value is None or value == "":
+            return ()
+        raw = value.split(",") if isinstance(value, str) else value
+        if not isinstance(raw, list | tuple):
+            raise ValueError(
+                "demo_allowed_chat_ids must be a list or comma-separated IDs"
+            )
+        ids = tuple(str(item).strip() for item in raw)
+        if not ids:
+            return ()
+        if any(not item or not item.lstrip("-").isdigit() for item in ids):
+            raise ValueError("demo_allowed_chat_ids must contain nonblank numeric IDs")
+        if len(set(ids)) != len(ids):
+            raise ValueError("demo_allowed_chat_ids must not contain duplicates")
+        return ids
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -280,6 +304,15 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "telegram_platform_connection_id is required for outbound delivery"
                 )
+        if self.demo_live_enabled:
+            if self.telegram_delivery_mode != "polling":
+                raise ValueError(
+                    "demo live mode requires telegram_delivery_mode=polling"
+                )
+            if not self.demo_allowed_chat_ids:
+                raise ValueError("demo live mode requires demo_allowed_chat_ids")
+            if not self.llm_enabled or not self.outbound_delivery_enabled:
+                raise ValueError("demo live mode requires LLM and outbound delivery")
         return self
 
     @property

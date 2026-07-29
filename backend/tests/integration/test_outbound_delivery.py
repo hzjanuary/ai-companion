@@ -41,6 +41,7 @@ from app.runtime.outbound_delivery_worker import consume_once
 
 @pytest.mark.integration
 @pytest.mark.delivery_integration
+@pytest.mark.demo_integration
 def test_confirmed_delivery_persists_one_outgoing_message_and_is_idempotent() -> None:
     class FakeAdapter:
         def __init__(self) -> None:
@@ -74,7 +75,13 @@ def test_confirmed_delivery_persists_one_outgoing_message_and_is_idempotent() ->
             telegram_enabled=True,
             telegram_bot_token="fake-token",
             telegram_platform_connection_id=uuid4(),
+            telegram_delivery_mode="polling",
             outbound_delivery_enabled=True,
+            llm_enabled=True,
+            llm_primary_provider="ollama",
+            llm_ollama_model="synthetic",
+            demo_live_enabled=True,
+            demo_allowed_chat_ids=("4000000001",),
         )
         database = Database(settings)
         await database.start()
@@ -95,7 +102,7 @@ def test_confirmed_delivery_persists_one_outgoing_message_and_is_idempotent() ->
                 await session.flush()
                 conversation = ConversationModel(
                     platform_connection_id=connection.id,
-                    platform_conversation_id="chat-1",
+                    platform_conversation_id="4000000001",
                     conversation_type=ConversationType.GROUP,
                     status=ConversationStatus.ACTIVE,
                     response_mode=ResponseMode.AMBIENT_SELECTIVE,
@@ -178,7 +185,7 @@ def test_confirmed_delivery_persists_one_outgoing_message_and_is_idempotent() ->
         assert await consume_once(settings, database, fake) == 0  # type: ignore[arg-type]
         assert len(fake.requests) == 1
         request = fake.requests[0]
-        assert request.conversation_id == "chat-1"  # type: ignore[attr-defined]
+        assert request.conversation_id == "4000000001"  # type: ignore[attr-defined]
         assert request.reply_to_message_id == "42"  # type: ignore[attr-defined]
         assert request.message_thread_id == "thread-1"  # type: ignore[attr-defined]
         async with database.session_factory() as session:
@@ -230,6 +237,28 @@ def test_confirmed_delivery_persists_one_outgoing_message_and_is_idempotent() ->
             lease = await session.get(OutboundActionModel, retry_id)
             assert lease is not None
             assert lease.status == OutboundActionStatus.DELIVERY_UNKNOWN
+            skipped = OutboundActionModel(
+                response_plan_id=action.response_plan_id,
+                conversation_id=action.conversation_id,
+                sequence_number=3,
+                idempotency_key="c" * 64,
+                kind=OutboundActionKind.TEXT,
+                text="must not send",
+                mention_participant_ids=[],
+            )
+            session.add(skipped)
+            await session.commit()
+            skipped_id = skipped.id
+        denied_settings = settings.model_copy(
+            update={"demo_allowed_chat_ids": ("4000000002",)}
+        )
+        assert await consume_once(denied_settings, database, fake) == 1  # type: ignore[arg-type]
+        assert len(fake.requests) == 1
+        async with database.session_factory() as session:
+            skipped = await session.get(OutboundActionModel, skipped_id)
+            assert skipped is not None
+            assert skipped.status == OutboundActionStatus.SKIPPED
+            assert skipped.last_error_category == "conversation_not_allowed"
         await database.stop()
 
     asyncio.run(scenario())

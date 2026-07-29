@@ -57,6 +57,38 @@ def test_outbound_settings_require_telegram_and_validate_stickers() -> None:
         Settings(_env_file=None, telegram_sticker_mapping={"laugh": " "})
 
 
+def test_demo_mode_requires_polling_allowlist_and_live_components() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, demo_live_enabled=True)
+    settings = Settings(
+        _env_file=None,
+        demo_live_enabled=True,
+        demo_allowed_chat_ids=("-1000000000001", "123"),
+        telegram_enabled=True,
+        telegram_bot_token="fake-token",
+        telegram_delivery_mode="polling",
+        telegram_platform_connection_id=uuid4(),
+        llm_enabled=True,
+        llm_primary_provider="ollama",
+        llm_ollama_model="fake",
+        outbound_delivery_enabled=True,
+    )
+    assert settings.demo_allowed_chat_ids == ("-1000000000001", "123")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, demo_allowed_chat_ids=("1", "1"))
+
+
+def test_demo_allowlist_parses_environment_json_and_rejects_non_numeric_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JANUARY_DEMO_ALLOWED_CHAT_IDS", '["-1000000000001", "123"]')
+    assert Settings(_env_file=None).demo_allowed_chat_ids == ("-1000000000001", "123")
+
+    monkeypatch.setenv("JANUARY_DEMO_ALLOWED_CHAT_IDS", '["not-a-chat"]')
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
 def test_webhook_delivery_requires_complete_redacted_configuration() -> None:
     connection_id = uuid4()
     settings = Settings(

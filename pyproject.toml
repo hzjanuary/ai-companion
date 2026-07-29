@@ -31,6 +31,7 @@ markers = [
   "conversation_integration: requires the project-owned PostgreSQL and Redis services",
   "planning_integration: requires the project-owned PostgreSQL and Redis services",
   "delivery_integration: requires the project-owned PostgreSQL and Redis services",
+  "demo_integration: proves guarded local-demo behavior with fake adapters",
 ]
 
 [tool.ruff]

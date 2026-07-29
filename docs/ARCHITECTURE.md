@@ -74,3 +74,8 @@ leases, attempts, and outgoing-message linkage; Telegram rendering and asset
 references stay in infrastructure. A send timeout or malformed post-send
 response is terminal `delivery_unknown`, deliberately avoiding automatic
 duplicate visible messages rather than claiming exactly-once delivery.
+
+SPEC-008 adds only explicit runtime composition for local operators. Demo
+allowlisting happens before conversation persistence, bootstrap reconciles safe
+identity metadata transactionally, and all five workers remain separate from
+the API process.

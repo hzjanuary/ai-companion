@@ -93,6 +93,31 @@ class SqlAlchemyConversationProcessor:
                 await session.flush()
                 return self._record_result(record, duplicate=False)
 
+    async def ignore_not_allowed(
+        self, event: IngressQueueEvent
+    ) -> ConversationProcessResult:
+        """Durably suppress demo traffic before it can create product state."""
+
+        async with self._session_factory() as session:
+            async with session.begin():
+                existing = await session.scalar(
+                    select(ConversationProcessingRecordModel).where(
+                        ConversationProcessingRecordModel.incoming_update_id
+                        == event.incoming_update_id
+                    )
+                )
+                if existing is not None:
+                    return self._record_result(existing, duplicate=True)
+                incoming, _, _ = await self._validate_ingress(session, event)
+                record = ConversationProcessingRecordModel(
+                    incoming_update_id=incoming.id,
+                    outcome=ProcessingOutcome.IGNORED,
+                    permanent_error="conversation_not_allowed",
+                )
+                session.add(record)
+                await session.flush()
+                return self._record_result(record, duplicate=False)
+
     async def _process_in_transaction(
         self,
         session: AsyncSession,

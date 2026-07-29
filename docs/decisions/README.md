@@ -18,3 +18,4 @@ documents here as real choices are accepted, then index them in this file.
 - [0005 Conversation Processing Ledger](0005-conversation-processing-ledger.md)
 - [0006 Provider Planning and Durable Leases](0006-provider-planning.md)
 - [0007 Outbound Delivery and Ambiguous Results](0007-outbound-delivery-ambiguity.md)
+- [0008 Operator Demo Boundary](0008-operator-demo-boundary.md)
