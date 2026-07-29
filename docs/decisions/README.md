@@ -17,3 +17,4 @@ documents here as real choices are accepted, then index them in this file.
 - [0004 Telegram Durable Ingress](0004-telegram-durable-ingress.md)
 - [0005 Conversation Processing Ledger](0005-conversation-processing-ledger.md)
 - [0006 Provider Planning and Durable Leases](0006-provider-planning.md)
+- [0007 Outbound Delivery and Ambiguous Results](0007-outbound-delivery-ambiguity.md)

@@ -80,3 +80,12 @@ is requested; local schema and policy validation remains mandatory.
 Every response includes `X-Request-ID`. A syntactically valid incoming value is
 preserved; otherwise one is generated. Unhandled failures return a safe JSON
 error with the same request ID.
+
+## Outbound Delivery
+
+Response planning does not send directly. The optional outbound worker leases
+durable actions and is disabled unless `JANUARY_OUTBOUND_DELIVERY_ENABLED=true`.
+Run it separately with `uv run python -m app.runtime.outbound_delivery_worker`.
+Known Telegram rejections are bounded retries; timeout, network, and malformed
+post-send outcomes are terminal `delivery_unknown` to avoid automatic duplicate
+sends. `./scripts/validate-delivery.sh` is synthetic and does not call Telegram.

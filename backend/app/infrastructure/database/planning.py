@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.outbound import compile_outbound_actions
 from app.application.response_plan import ResponsePlanCandidate
 from app.domain.planning import (
     GenerationAttemptKind,
@@ -15,7 +16,9 @@ from app.domain.planning import (
     ProviderId,
 )
 from app.infrastructure.database.models import (
+    MessageModel,
     ModelGenerationAttemptModel,
+    OutboundActionModel,
     ResponsePlanModel,
     ResponsePlanningJobModel,
 )
@@ -138,23 +141,43 @@ class SqlAlchemyPlanningRepository:
                         else PlanningJobStatus.FAILED
                     )
                     return True
-                session.add(
-                    ResponsePlanModel(
-                        planning_job_id=job.id,
-                        should_respond=candidate.should_respond,
-                        reason_code=candidate.reason_code,
-                        text=candidate.text,
-                        reply_to_message_id=candidate.reply_to_message_id,
-                        mention_participant_ids=[
-                            str(value) for value in candidate.mentions
-                        ],
-                        sticker_intent=candidate.sticker_intent,
-                        confidence=candidate.confidence,
-                        language=candidate.language,
-                        prompt_version=prompt_version,
-                        schema_version=schema_version,
-                    )
+                plan = ResponsePlanModel(
+                    planning_job_id=job.id,
+                    should_respond=candidate.should_respond,
+                    reason_code=candidate.reason_code,
+                    text=candidate.text,
+                    reply_to_message_id=candidate.reply_to_message_id,
+                    mention_participant_ids=[
+                        str(value) for value in candidate.mentions
+                    ],
+                    sticker_intent=candidate.sticker_intent,
+                    confidence=candidate.confidence,
+                    language=candidate.language,
+                    prompt_version=prompt_version,
+                    schema_version=schema_version,
                 )
+                session.add(plan)
+                await session.flush()
+                for action in compile_outbound_actions(plan.id, candidate):
+                    source_message = await session.get(MessageModel, job.message_id)
+                    session.add(
+                        OutboundActionModel(
+                            response_plan_id=plan.id,
+                            conversation_id=job.conversation_id,
+                            sequence_number=action.sequence_number,
+                            idempotency_key=action.idempotency_key,
+                            kind=action.kind,
+                            reply_to_message_id=action.reply_to_message_id,
+                            message_thread_id=source_message.platform_thread_id
+                            if source_message is not None
+                            else None,
+                            mention_participant_ids=[
+                                str(value) for value in action.mention_participant_ids
+                            ],
+                            text=action.text,
+                            sticker_intent=action.sticker_intent,
+                        )
+                    )
                 job.status = (
                     PlanningJobStatus.COMPLETED
                     if candidate.should_respond

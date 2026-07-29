@@ -9,6 +9,8 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
+from app.domain.planning import StickerIntent
+
 
 class Settings(BaseSettings):
     """Configuration that is safe to load without external dependencies."""
@@ -114,6 +116,36 @@ class Settings(BaseSettings):
     )
     response_plan_text_limit: int = Field(default=500, ge=1, le=4000)
     llm_live_verification_enabled: bool = False
+    outbound_delivery_enabled: bool = False
+    outbound_owner_name: str = Field(default="outbound", min_length=1, max_length=255)
+    outbound_batch_size: int = Field(default=10, ge=1, le=100)
+    outbound_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
+    outbound_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    outbound_max_confirmed_rejection_attempts: int = Field(default=3, ge=1, le=20)
+    outbound_retry_min_delay_seconds: float = Field(default=1, gt=0, le=300)
+    outbound_retry_max_delay_seconds: float = Field(default=60, gt=0, le=3600)
+    telegram_text_limit: int = Field(default=4096, ge=1, le=4096)
+    telegram_disable_notification: bool = False
+    telegram_protect_content: bool = False
+    telegram_sticker_mapping: dict[str, str] = Field(default_factory=dict)
+    telegram_delivery_test_chat_id: str | None = None
+    telegram_live_delivery_verification_enabled: bool = False
+
+    @field_validator("telegram_sticker_mapping")
+    @classmethod
+    def validate_sticker_mapping(cls, value: dict[str, str]) -> dict[str, str]:
+        allowed = {intent.value for intent in StickerIntent}
+        invalid = set(value) - allowed
+        if invalid:
+            raise ValueError("telegram_sticker_mapping has unsupported intent keys")
+        if any(
+            not reference.strip() or len(reference) > 255
+            for reference in value.values()
+        ):
+            raise ValueError(
+                "telegram_sticker_mapping values must be nonblank and <=255"
+            )
+        return value
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -151,6 +183,7 @@ class Settings(BaseSettings):
         "telegram_bot_token",
         "telegram_webhook_secret_token",
         "telegram_platform_connection_id",
+        "telegram_delivery_test_chat_id",
         mode="before",
     )
     @classmethod
@@ -232,6 +265,21 @@ class Settings(BaseSettings):
                     raise ValueError(
                         f"llm_{provider}_api_key is required when LLM is enabled"
                     )
+        if (
+            self.outbound_retry_min_delay_seconds
+            > self.outbound_retry_max_delay_seconds
+        ):
+            raise ValueError("outbound retry minimum delay cannot exceed maximum delay")
+        if self.outbound_delivery_enabled:
+            if not self.telegram_enabled or self.telegram_bot_token is None:
+                raise ValueError(
+                    "Telegram enabled mode and bot token are required "
+                    "for outbound delivery"
+                )
+            if self.telegram_platform_connection_id is None:
+                raise ValueError(
+                    "telegram_platform_connection_id is required for outbound delivery"
+                )
         return self
 
     @property

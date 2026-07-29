@@ -47,6 +47,10 @@ and working-memory structure around that truth; it does not install upstream
   Telegram delivery, durable inbox/outbox, and Redis Streams behavior.
 - `decisions/0004-telegram-durable-ingress.md`: accepted ingress delivery and
   idempotency strategy.
+- `product/specs/SPEC-007-outbound-actions-delivery-idempotency.md`: durable
+  response-plan delivery, ambiguity policy, and recovery boundary.
+- `decisions/0007-outbound-delivery-ambiguity.md`: lasting no-exactly-once
+  Telegram delivery decision.
 
 ## Source-Repository Indexes
 

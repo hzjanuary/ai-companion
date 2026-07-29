@@ -12,6 +12,7 @@ from app.application.ports.platform import (
     SendTextRequest,
 )
 from app.core.config import Settings
+from app.domain.outbound import DeliveryCertainty
 from app.infrastructure.telegram.adapter import TelegramAdapter, create_telegram_adapter
 
 TOKEN = "123456:UNMISTAKABLE_FAKE_TOKEN"
@@ -127,7 +128,10 @@ def test_send_operations_serialize_typed_payloads_and_reuse_client() -> None:
             {
                 "chat_id": "-100",
                 "text": "hello",
-                "reply_parameters": {"message_id": "4"},
+                "reply_parameters": {
+                    "message_id": "4",
+                    "allow_sending_without_reply": False,
+                },
                 "disable_notification": True,
             },
             {"chat_id": "-100", "sticker": "file-id", "message_thread_id": "8"},
@@ -165,6 +169,7 @@ def test_chat_member_and_classified_failures_are_safe() -> None:
         assert error.category == PlatformErrorCategory.RATE_LIMITED
         assert error.retry_after_seconds == 4
         assert error.replacement_conversation_id == "-200"
+        assert error.delivery_certainty == DeliveryCertainty.REJECTED
         assert TOKEN not in str(error)
         await supplied.aclose()
 
@@ -184,9 +189,22 @@ def test_malformed_and_timeout_responses_are_not_retried() -> None:
         with pytest.raises(PlatformAdapterError) as captured:
             await timeout.send_sticker(SendStickerRequest("-100", "file"))
         assert captured.value.category == PlatformErrorCategory.TIMEOUT
+        assert captured.value.delivery_certainty == DeliveryCertainty.UNKNOWN
         with pytest.raises(PlatformAdapterError) as invalid:
             await timeout.send_text(SendTextRequest("", ""))
         assert invalid.value.category == PlatformErrorCategory.INVALID_REQUEST
+        assert invalid.value.delivery_certainty == DeliveryCertainty.NOT_SENT
+
+        malformed = TelegramAdapter(
+            settings(),
+            client(httpx.MockTransport(lambda _: httpx.Response(200, text="{"))),
+        )
+        with pytest.raises(PlatformAdapterError) as malformed_error:
+            await malformed.send_text(SendTextRequest("-100", "hello"))
+        assert (
+            malformed_error.value.category == PlatformErrorCategory.MALFORMED_RESPONSE
+        )
+        assert malformed_error.value.delivery_certainty == DeliveryCertainty.UNKNOWN
 
     asyncio.run(scenario())
 

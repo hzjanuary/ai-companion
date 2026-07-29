@@ -27,6 +27,7 @@ from app.infrastructure.database.models import (
     IncomingPlatformUpdateModel,
     IngressOutboxEventModel,
     ModelGenerationAttemptModel,
+    OutboundActionModel,
     PlatformConnectionModel,
     ResponsePlanModel,
     ResponsePlanningJobModel,
@@ -259,6 +260,7 @@ def test_eligible_ingress_creates_one_durable_response_plan(settings: Settings) 
                 == 1
             )
             assert await session.scalar(select(func.count(ResponsePlanModel.id))) == 1
+            assert await session.scalar(select(func.count(OutboundActionModel.id))) == 1
         await queue.aclose()
         await clear(database)
         await database.stop()

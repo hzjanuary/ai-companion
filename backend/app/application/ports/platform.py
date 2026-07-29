@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
+from app.domain.outbound import DeliveryCertainty
 from app.domain.persistence import Platform
 
 
@@ -116,6 +117,7 @@ class PlatformAdapterError(Exception):
         retry_after_seconds: int | None = None,
         replacement_conversation_id: str | None = None,
         telegram_error_code: int | None = None,
+        delivery_certainty: DeliveryCertainty = DeliveryCertainty.NOT_SENT,
         diagnostic: str = "Telegram operation failed",
     ) -> None:
         self.category = category
@@ -124,6 +126,7 @@ class PlatformAdapterError(Exception):
         self.retry_after_seconds = retry_after_seconds
         self.replacement_conversation_id = replacement_conversation_id
         self.telegram_error_code = telegram_error_code
+        self.delivery_certainty = delivery_certainty
         self.diagnostic = diagnostic
         super().__init__(f"{operation}: {category.value}")
 

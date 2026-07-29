@@ -25,6 +25,12 @@ from app.domain.conversation import (
     MembershipStatus,
     ProcessingOutcome,
 )
+from app.domain.outbound import (
+    DeliveryAttemptStatus,
+    DeliveryCertainty,
+    OutboundActionKind,
+    OutboundActionStatus,
+)
 from app.domain.persistence import (
     AssistantStatus,
     ConversationStatus,
@@ -185,6 +191,9 @@ class MessageModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("participants.id", ondelete="RESTRICT"), index=True
     )
     platform_message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    outbound_action_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("outbound_actions.id", ondelete="RESTRICT"), unique=True, index=True
+    )
     direction: Mapped[MessageDirection] = mapped_column(
         string_enum(MessageDirection, "message_direction"), nullable=False
     )
@@ -430,3 +439,102 @@ class ResponsePlanModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     language: Mapped[str | None] = mapped_column(String(16))
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
     schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class OutboundActionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "outbound_actions"
+    __table_args__ = (
+        UniqueConstraint("response_plan_id", "sequence_number"),
+        UniqueConstraint("idempotency_key"),
+        Index("ix_outbound_actions_claim", "status", "available_at", "created_at"),
+        Index("ix_outbound_actions_lease", "status", "lease_expires_at"),
+    )
+
+    response_plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("response_plans.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    sequence_number: Mapped[int] = mapped_column(nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[OutboundActionKind] = mapped_column(
+        string_enum(OutboundActionKind, "outbound_action_kind"), nullable=False
+    )
+    status: Mapped[OutboundActionStatus] = mapped_column(
+        string_enum(OutboundActionStatus, "outbound_action_status"),
+        default=OutboundActionStatus.PENDING,
+        nullable=False,
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    reply_to_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), index=True
+    )
+    message_thread_id: Mapped[str | None] = mapped_column(String(255))
+    text: Mapped[str | None] = mapped_column(Text)
+    mention_participant_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    sticker_intent: Mapped[StickerIntent | None] = mapped_column(
+        string_enum(StickerIntent, "outbound_sticker_intent")
+    )
+    delivered_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), unique=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_unknown_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    last_error_category: Mapped[str | None] = mapped_column(String(64))
+    last_error_code: Mapped[str | None] = mapped_column(String(64))
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OutboundDeliveryAttemptModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "outbound_delivery_attempts"
+    __table_args__ = (UniqueConstraint("outbound_action_id", "attempt_number"),)
+
+    outbound_action_id: Mapped[UUID] = mapped_column(
+        ForeignKey("outbound_actions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    attempt_number: Mapped[int] = mapped_column(nullable=False)
+    platform: Mapped[str] = mapped_column(
+        String(32), default="telegram", nullable=False
+    )
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    external_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    latency_milliseconds: Mapped[int | None] = mapped_column()
+    status: Mapped[DeliveryAttemptStatus] = mapped_column(
+        string_enum(DeliveryAttemptStatus, "outbound_delivery_attempt_status"),
+        nullable=False,
+    )
+    certainty: Mapped[DeliveryCertainty] = mapped_column(
+        string_enum(DeliveryCertainty, "outbound_delivery_certainty"), nullable=False
+    )
+    error_category: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    retry_after_seconds: Mapped[float | None] = mapped_column()
+    migration_conversation_id: Mapped[str | None] = mapped_column(String(255))
+
+
+class OutboundRecoveryEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "outbound_recovery_events"
+
+    outbound_action_id: Mapped[UUID] = mapped_column(
+        ForeignKey("outbound_actions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor: Mapped[str] = mapped_column(String(255), nullable=False)

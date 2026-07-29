@@ -22,6 +22,7 @@ contract, implementation, and executable tests.
 - [SPEC-004 Telegram Ingress, Queue, and Idempotency](specs/SPEC-004-telegram-ingress-queue-idempotency.md)
 - [SPEC-005 Conversation Domain and Context](specs/SPEC-005-conversation-domain-and-context.md)
 - [SPEC-006 LLM Provider and Response Planning](specs/SPEC-006-llm-provider-and-response-planning.md)
+- [SPEC-007 Outbound Actions, Delivery, and Idempotency](specs/SPEC-007-outbound-actions-delivery-idempotency.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule

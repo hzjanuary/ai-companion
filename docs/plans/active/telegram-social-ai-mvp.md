@@ -85,6 +85,10 @@ Out of scope:
   leases, durable attempts/plans, strict local policy, direct typed provider
   adapters, bounded retry/correction/fallback, and a synthetic no-network
   worker proof. It does not send Telegram actions.
+- [x] SPEC-007: migration `0005_outbound_delivery`, transactional response-plan
+  handoff, ordered PostgreSQL action leases and attempts, typed Telegram
+  rendering, confirmed outgoing-message persistence, terminal ambiguous-send
+  policy, explicit recovery audit, and an optional disabled sender runtime.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -158,8 +162,15 @@ Out of scope:
   deterministic retry/correction/fallback and refusal tests pass. The disabled
   LLM Compose stack built as `january-backend:spec-006` and `/`, `/health`,
   `/live`, `/ready`, and `/docs` returned HTTP 200 on isolated port 8004.
+- SPEC-007 proof: `./scripts/validate.sh` passed 79 no-network tests, Ruff,
+  strict mypy, Harness, and diff checks. `validate-db.sh` downgraded to base and
+  re-upgraded through `0005_outbound_delivery`; ingress, conversation, planning,
+  and delivery validators passed using only PostgreSQL/Redis and fake adapters.
+  Docker built `january-backend:spec-007`; the disabled stack returned 200 for
+  `/`, `/health`, `/live`, `/ready`, and `/docs`, and a stopped database yielded
+  safe `/ready` 503 output. No public Telegram or model call occurred.
 
 ## Result
 
-SPEC-001 through SPEC-006 are implemented. This plan remains active for the
-Telegram MVP; outbound delivery behavior remains unimplemented.
+SPEC-001 through SPEC-007 are implemented. This plan remains active for the
+Telegram MVP; later product behavior remains unimplemented.

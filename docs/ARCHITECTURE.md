@@ -67,3 +67,10 @@ in infrastructure; application values carry only typed generation requests,
 results, and safe errors. PostgreSQL leases and immutable response plans make
 planning durable without claiming exactly-once generation or executing any
 platform action.
+
+SPEC-007 compiles response plans to ordered platform-independent actions in the
+planning transaction. Its sender is a separate runtime: PostgreSQL owns action
+leases, attempts, and outgoing-message linkage; Telegram rendering and asset
+references stay in infrastructure. A send timeout or malformed post-send
+response is terminal `delivery_unknown`, deliberately avoiding automatic
+duplicate visible messages rather than claiming exactly-once delivery.

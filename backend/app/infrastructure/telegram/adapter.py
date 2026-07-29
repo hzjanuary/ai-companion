@@ -17,6 +17,7 @@ from app.application.ports.platform import (
     WebhookInfo,
 )
 from app.core.config import Settings
+from app.domain.outbound import DeliveryCertainty
 from app.domain.persistence import Platform
 from app.infrastructure.telegram.updates import TelegramUpdate, parse_telegram_update
 
@@ -240,8 +241,18 @@ class TelegramAdapter:
     def _add_send_options(
         self, payload: dict[str, Any], request: SendTextRequest | SendStickerRequest
     ) -> None:
+        if request.message_thread_id is not None and (
+            not request.message_thread_id.isdecimal()
+            or int(request.message_thread_id) <= 0
+        ):
+            raise PlatformAdapterError(
+                PlatformErrorCategory.INVALID_REQUEST, "send_thread"
+            )
         if request.reply_to_message_id is not None:
-            payload["reply_parameters"] = {"message_id": request.reply_to_message_id}
+            payload["reply_parameters"] = {
+                "message_id": request.reply_to_message_id,
+                "allow_sending_without_reply": False,
+            }
         if request.message_thread_id is not None:
             payload["message_thread_id"] = request.message_thread_id
         if request.disable_notification is not None:
@@ -258,27 +269,38 @@ class TelegramAdapter:
             )
         except httpx.TimeoutException as error:
             raise PlatformAdapterError(
-                PlatformErrorCategory.TIMEOUT, operation
+                PlatformErrorCategory.TIMEOUT,
+                operation,
+                delivery_certainty=self._certainty_for_transport(operation),
             ) from error
         except httpx.HTTPError as error:
             raise PlatformAdapterError(
-                PlatformErrorCategory.NETWORK, operation, retryable=True
+                PlatformErrorCategory.NETWORK,
+                operation,
+                retryable=True,
+                delivery_certainty=self._certainty_for_transport(operation),
             ) from error
         try:
             envelope = response.json()
         except ValueError as error:
             raise PlatformAdapterError(
-                PlatformErrorCategory.MALFORMED_RESPONSE, operation
+                PlatformErrorCategory.MALFORMED_RESPONSE,
+                operation,
+                delivery_certainty=self._certainty_for_transport(operation),
             ) from error
         if not isinstance(envelope, dict) or not isinstance(envelope.get("ok"), bool):
             raise PlatformAdapterError(
-                PlatformErrorCategory.MALFORMED_RESPONSE, operation
+                PlatformErrorCategory.MALFORMED_RESPONSE,
+                operation,
+                delivery_certainty=self._certainty_for_transport(operation),
             )
         if envelope["ok"] is True:
             result = envelope.get("result")
             if not isinstance(result, result_type):
                 raise PlatformAdapterError(
-                    PlatformErrorCategory.MALFORMED_RESPONSE, operation
+                    PlatformErrorCategory.MALFORMED_RESPONSE,
+                    operation,
+                    delivery_certainty=self._certainty_for_transport(operation),
                 )
             return result
         self._raise_failure(operation, envelope, response.status_code)
@@ -323,6 +345,14 @@ class TelegramAdapter:
             if isinstance(migrate, str | int)
             else None,
             telegram_error_code=code,
+            delivery_certainty=DeliveryCertainty.REJECTED,
+        )
+
+    def _certainty_for_transport(self, operation: str) -> DeliveryCertainty:
+        return (
+            DeliveryCertainty.UNKNOWN
+            if operation in {"sendMessage", "sendSticker"}
+            else DeliveryCertainty.NOT_SENT
         )
 
     def _message(self, result: dict[str, Any], operation: str) -> SentMessage:

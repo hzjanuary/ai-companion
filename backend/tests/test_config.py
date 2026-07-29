@@ -16,6 +16,7 @@ def test_settings_defaults() -> None:
     assert settings.telegram_delivery_mode == "disabled"
     assert settings.context_recent_message_limit == 20
     assert settings.llm_enabled is False
+    assert settings.outbound_delivery_enabled is False
 
 
 def test_llm_settings_require_remote_credentials_and_allow_keyless_ollama() -> None:
@@ -36,6 +37,24 @@ def test_llm_settings_require_remote_credentials_and_allow_keyless_ollama() -> N
             llm_ollama_model="fake",
             llm_fallback_provider="ollama",
         )
+
+
+def test_outbound_settings_require_telegram_and_validate_stickers() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, outbound_delivery_enabled=True)
+    settings = Settings(
+        _env_file=None,
+        telegram_enabled=True,
+        telegram_bot_token="fake-token",
+        telegram_platform_connection_id=uuid4(),
+        outbound_delivery_enabled=True,
+        telegram_sticker_mapping={"laugh": "file-id"},
+    )
+    assert settings.telegram_sticker_mapping == {"laugh": "file-id"}
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, telegram_sticker_mapping={"unknown": "file-id"})
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, telegram_sticker_mapping={"laugh": " "})
 
 
 def test_webhook_delivery_requires_complete_redacted_configuration() -> None:

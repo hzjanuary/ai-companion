@@ -120,6 +120,27 @@ checks configuration without network access. `--live` requires both LLM flags
 and sends one small synthetic structured request; it prints only provider,
 model, and local validation success.
 
+## Outbound Delivery
+
+Outbound delivery is disabled by default and runs only in its own process:
+
+```bash
+uv run python -m app.runtime.outbound_delivery_worker
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-delivery.sh
+```
+
+The delivery validator migrates to `0005_outbound_delivery` and uses synthetic
+no-network tests. Timeout, transport, and malformed post-send outcomes become
+terminal `delivery_unknown`; they are never retried automatically.
+
+List uncertain actions without message content, or intentionally requeue one
+only after accepting a possible duplicate:
+
+```bash
+uv run python -m app.runtime.outbound_recovery
+uv run python -m app.runtime.outbound_recovery ACTION_UUID --confirm-possible-duplicate
+```
+
 ## Validation
 
 Run the repository's canonical local validation command:
