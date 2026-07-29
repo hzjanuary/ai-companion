@@ -14,6 +14,10 @@ class PlatformCapability(StrEnum):
     REPLY_TO_MESSAGE = "reply_to_message"
     SEND_STICKER = "send_sticker"
     GET_CHAT_MEMBER = "get_chat_member"
+    GET_UPDATES = "get_updates"
+    SET_WEBHOOK = "set_webhook"
+    DELETE_WEBHOOK = "delete_webhook"
+    GET_WEBHOOK_INFO = "get_webhook_info"
 
 
 class PlatformErrorCategory(StrEnum):
@@ -88,6 +92,18 @@ class ChatMember:
     is_administrator: bool
     is_owner: bool
     permissions: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookInfo:
+    url: str
+    pending_update_count: int
+    allowed_updates: tuple[str, ...]
+    max_connections: int | None
+    last_error_at: datetime | None
+    last_error_message: str | None
+    ip_address: str | None
+    has_custom_certificate: bool
 
 
 class PlatformAdapterError(Exception):

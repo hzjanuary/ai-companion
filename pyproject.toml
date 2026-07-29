@@ -9,6 +9,7 @@ dependencies = [
   "fastapi>=0.115,<0.116",
   "httpx>=0.28,<0.29",
   "pydantic-settings>=2.7,<2.8",
+  "redis>=5.2,<6.0",
   "sqlalchemy>=2.0,<2.1",
   "uvicorn[standard]>=0.34,<0.35",
 ]
@@ -26,6 +27,7 @@ pythonpath = ["backend"]
 addopts = "-ra -m 'not integration'"
 markers = [
   "integration: requires the project-owned PostgreSQL database",
+  "ingress_integration: requires the project-owned PostgreSQL and Redis services",
 ]
 
 [tool.ruff]

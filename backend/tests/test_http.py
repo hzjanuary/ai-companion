@@ -25,12 +25,14 @@ def test_health_and_ready_succeed_with_healthy_database(client: AppClient) -> No
         "status": "ok",
         "application": {"status": "ok"},
         "database": {"status": "ok"},
+        "redis": {"status": "disabled"},
     }
     assert ready.status_code == 200
     assert ready.json() == {
         "service": "January",
         "status": "ok",
         "database": {"status": "ok"},
+        "redis": {"status": "disabled"},
     }
 
 

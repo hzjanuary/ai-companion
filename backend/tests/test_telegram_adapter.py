@@ -238,3 +238,52 @@ def test_malformed_response_and_unknown_member_status_are_rejected() -> None:
         await supplied.aclose()
 
     asyncio.run(scenario())
+
+
+def test_update_delivery_and_webhook_lifecycle_are_typed() -> None:
+    payloads: list[dict[str, object]] = []
+    responses = [
+        {"ok": True, "result": [{"update_id": 4_000_000_000, "message": {}}]},
+        {"ok": True, "result": True},
+        {"ok": True, "result": True},
+        {
+            "ok": True,
+            "result": {
+                "url": "https://example.invalid/hook",
+                "has_custom_certificate": False,
+                "pending_update_count": 2,
+                "allowed_updates": ["message"],
+                "max_connections": 10,
+            },
+        },
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json=responses.pop(0))
+
+    async def scenario() -> None:
+        supplied = client(httpx.MockTransport(handler))
+        adapter = TelegramAdapter(settings(), supplied)
+        updates = await adapter.get_updates(
+            offset="4000000000",
+            limit=10,
+            timeout_seconds=20,
+            allowed_updates=("message",),
+        )
+        assert updates[0].update_id == "4000000000"
+        await adapter.set_webhook(
+            url="https://example.invalid/hook",
+            secret_token="safe-secret",
+            allowed_updates=("message",),
+            max_connections=10,
+        )
+        await adapter.delete_webhook()
+        info = await adapter.get_webhook_info()
+        assert info.pending_update_count == 2
+        assert payloads[0]["offset"] == 4_000_000_000
+        assert payloads[1]["drop_pending_updates"] is False
+        assert payloads[2]["drop_pending_updates"] is False
+        await supplied.aclose()
+
+    asyncio.run(scenario())

@@ -66,6 +66,13 @@ Out of scope:
   validation passed its migration lifecycle and two PostgreSQL integration
   tests. Compose ran with Telegram disabled; all required HTTP endpoints
   returned 200.
+- [x] SPEC-004: added mutually exclusive Telegram webhook/polling delivery,
+  typed update parsing, transactional PostgreSQL inbox/outbox and cursor, Redis
+  Streams reference events, and dedicated poller/dispatcher runtimes.
+- [x] SPEC-004: real PostgreSQL/Redis validation migrated to
+  `0002_telegram_ingress` and passed webhook idempotency, outbox publication,
+  Stream acknowledgement/reclaim, and polling cursor tests without Telegram
+  credentials or public network calls.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -81,6 +88,10 @@ Out of scope:
   persist these rules in ADR 0002.
 - 2026-07-29: Use direct httpx Bot API calls with typed contracts, explicit
   client ownership, token redaction, and no automatic outbound retries.
+- 2026-07-29: Make Telegram ingress at-least-once through a PostgreSQL durable
+  inbox/outbox and Redis Streams; downstream work must deduplicate by stable
+  incoming update ID. Keep webhook lifecycle, polling, and dispatch explicit
+  separate runtimes.
 
 ## Validation
 
@@ -100,9 +111,18 @@ Out of scope:
 - SPEC-003 proof: `pytest backend/tests/test_telegram_adapter.py -q` passed 15
   mock-transport tests; `./scripts/validate.sh` passed 32 tests and static
   gates; `verify-telegram.sh` safely rejected missing configuration.
+- SPEC-004 proof: `./scripts/validate.sh` passed 47 no-network tests, Ruff,
+  mypy, Harness status/doctor, and `git diff --check`; `JANUARY_DB_HOST_PORT=5433
+  ./scripts/validate-db.sh` passed 2 PostgreSQL integration tests plus downgrade
+  and re-upgrade; `JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380
+  ./scripts/validate-ingress.sh` passed 3 PostgreSQL/Redis integration tests.
+- SPEC-004 runtime proof: `docker build --tag january-backend:spec-004 .` and
+  `docker compose config` passed. The normal Compose stack returned HTTP 200 for
+  `/`, `/health`, `/live`, `/ready`, and `/docs`; controlled database and
+  enabled-queue Redis failures returned safe `/ready` HTTP 503 responses. No
+  Telegram credential, webhook, or public Telegram call was used.
 
 ## Result
 
-SPEC-001 through SPEC-003 are implemented and validated. This plan remains
-active for the Telegram MVP; SPEC-004 and later product behavior remain
-unimplemented.
+SPEC-001 through SPEC-004 are implemented. This plan remains active for the
+Telegram MVP; business consumption and SPEC-005 behavior remain unimplemented.

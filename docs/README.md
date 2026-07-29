@@ -43,6 +43,10 @@ and working-memory structure around that truth; it does not install upstream
   outcome, model boundaries, and validation requirements.
 - `decisions/0002-postgresql-persistence-foundation.md`: accepted PostgreSQL
   persistence strategy.
+- `product/specs/SPEC-004-telegram-ingress-queue-idempotency.md`: accepted
+  Telegram delivery, durable inbox/outbox, and Redis Streams behavior.
+- `decisions/0004-telegram-durable-ingress.md`: accepted ingress delivery and
+  idempotency strategy.
 
 ## Source-Repository Indexes
 

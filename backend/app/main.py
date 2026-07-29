@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.database.database import Database
+from app.infrastructure.queue.redis_streams import RedisIngressQueue
 from app.infrastructure.telegram.adapter import create_telegram_adapter
 from app.interface.http.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.interface.http.models import ErrorResponse
@@ -23,17 +24,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(configured_settings.log_level)
     database = Database(configured_settings)
     telegram = create_telegram_adapter(configured_settings)
+    queue = RedisIngressQueue(configured_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await database.start()
         app.state.database = database
         app.state.telegram = telegram
+        app.state.ingress_queue = queue
         try:
             yield
         finally:
             if telegram is not None:
                 await telegram.aclose()
+            await queue.aclose()
             await database.stop()
 
     app = FastAPI(
@@ -43,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.database = database
     app.state.telegram = telegram
+    app.state.ingress_queue = queue
     app.add_middleware(RequestIdMiddleware)
     app.include_router(create_router(configured_settings))
 

@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0001_initial_persistence"
+                        and revision == "0002_telegram_ingress"
                     )
         except Exception:
             return False

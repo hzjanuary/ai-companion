@@ -4,7 +4,7 @@
 
 - Python 3.12
 - [uv](https://docs.astral.sh/uv/)
-- Docker and Docker Compose for container workflows
+- Docker and Docker Compose for PostgreSQL/Redis container workflows
 
 Install `uv` so it is available on your normal shell `PATH`; no system-wide
 Python package installation is required. The validation script prefers that
@@ -16,6 +16,11 @@ Telegram remains disabled unless `JANUARY_TELEGRAM_ENABLED=true` and a token is
 provided. The normal validation suite uses mock transport only. An operator may
 run `./scripts/verify-telegram.sh` to explicitly perform a `getMe` identity
 check; it is not part of CI or canonical validation.
+
+Update delivery is also disabled by default. Configure exactly one mode only:
+`webhook` needs a platform connection UUID, HTTPS public base URL, and secret;
+`polling` needs a platform connection UUID. Neither starts inside the API
+process.
 
 ## Setup And Run
 
@@ -48,7 +53,33 @@ It starts the project-owned database, upgrades, runs integration tests,
 downgrades to base, re-upgrades, and stops that database service without
 removing its volume. `/live` never checks PostgreSQL; `/ready` returns a safe
 `503` when the database or required schema is unavailable; `/health` reports
-the application and database component states.
+the application, database, and Redis component states. Redis is `disabled`
+until update delivery is enabled.
+
+## Telegram Ingress
+
+Run PostgreSQL and Redis ingress proof with isolated host ports:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-ingress.sh
+```
+
+It starts only `database` and `redis`, migrates, runs webhook, polling, outbox,
+and Stream integration tests, then stops those services. No real Telegram API
+call occurs.
+
+Configured operators use explicit commands only:
+
+```bash
+./scripts/telegram-webhook.sh inspect
+./scripts/telegram-webhook.sh register
+./scripts/telegram-webhook.sh remove
+uv run python -m app.runtime.telegram_poller
+uv run python -m app.runtime.ingress_outbox_dispatcher
+```
+
+`remove --drop-pending-updates` is required to request pending-update removal.
+The poller refuses to run when Telegram reports an existing webhook.
 
 ## Validation
 
@@ -81,6 +112,6 @@ Stop it with:
 docker compose down
 ```
 
-The Compose scope contains only the backend and PostgreSQL. Telegram remains
-disabled unless explicitly configured; readiness continues to reflect only the
-application and required database schema.
+The Compose scope contains the backend, PostgreSQL, and Redis 7. Telegram
+remains disabled unless explicitly configured. When delivery is enabled,
+readiness requires both PostgreSQL and Redis but never calls Telegram.

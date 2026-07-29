@@ -40,12 +40,18 @@ PostgreSQL infrastructure. It still avoids speculative modules.
 backend/app/
   core/          settings, logging, request context
   domain/        platform-independent persistence records and enums
-  application/   persistence ports
+  application/   persistence and platform-independent ingress contracts
   infrastructure/database/ async engine, models, repositories, migrations
-  infrastructure/telegram/ typed Bot API HTTP adapter
+  infrastructure/telegram/ typed Bot API HTTP adapter and Update DTOs
+  infrastructure/queue/ Redis Streams ingress queue
   interface/http/ response models, routes, middleware
-  main.py        application factory and runtime entry point
+  runtime/       dedicated polling and outbox dispatch entry points
+  main.py        application factory and API runtime entry point
 ```
 
 The factory is the composition boundary. New modules are introduced only with
 the first behavior that needs them.
+
+SPEC-004 keeps Telegram raw payloads and SDK contracts in infrastructure. The
+application ingress envelope is platform independent; PostgreSQL owns durable
+deduplication and outbox intent; Redis Streams transports references only.

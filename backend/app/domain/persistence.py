@@ -64,6 +64,22 @@ class MessageProcessingStatus(StrEnum):
     FAILED = "failed"
 
 
+class IncomingUpdateStatus(StrEnum):
+    RECEIVED = "received"
+    QUEUED = "queued"
+    REJECTED = "rejected"
+
+
+class IngressSource(StrEnum):
+    WEBHOOK = "webhook"
+    POLLING = "polling"
+
+
+class IngressOutboxStatus(StrEnum):
+    PENDING = "pending"
+    PUBLISHED = "published"
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantRecord:
     id: UUID

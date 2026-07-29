@@ -1,20 +1,22 @@
 """Authoritative SQLAlchemy models for the SPEC-002 schema."""
 
+from datetime import datetime
 from enum import Enum as PythonEnum
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     Enum,
     ForeignKey,
+    Index,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
-from sqlalchemy import (
-    text as sql_text,
-)
+from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +24,9 @@ from app.domain.persistence import (
     AssistantStatus,
     ConversationStatus,
     ConversationType,
+    IncomingUpdateStatus,
+    IngressOutboxStatus,
+    IngressSource,
     MessageDirection,
     MessageProcessingStatus,
     MessageType,
@@ -171,4 +176,84 @@ class MessageModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     reply_to: Mapped["MessageModel | None"] = relationship(
         remote_side="MessageModel.id", foreign_keys=[reply_to_message_id]
+    )
+
+
+class IncomingPlatformUpdateModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "incoming_platform_updates"
+    __table_args__ = (
+        UniqueConstraint("platform_connection_id", "platform_update_id"),
+        Index("ix_incoming_platform_updates_pending", "status", "received_at"),
+        Index(
+            "ix_incoming_platform_updates_connection_received",
+            "platform_connection_id",
+            "received_at",
+        ),
+    )
+
+    platform_connection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_connections.id", ondelete="RESTRICT"), nullable=False
+    )
+    platform: Mapped[Platform] = mapped_column(
+        string_enum(Platform, "incoming_platform"), nullable=False
+    )
+    platform_update_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    update_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    ingress_source: Mapped[IngressSource] = mapped_column(
+        string_enum(IngressSource, "ingress_source"), nullable=False
+    )
+    raw_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[IncomingUpdateStatus] = mapped_column(
+        string_enum(IncomingUpdateStatus, "incoming_update_status"),
+        default=IncomingUpdateStatus.RECEIVED,
+        nullable=False,
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IngressOutboxEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "ingress_outbox_events"
+    __table_args__ = (
+        UniqueConstraint("incoming_update_id"),
+        Index(
+            "ix_ingress_outbox_events_pending", "status", "available_at", "created_at"
+        ),
+    )
+
+    incoming_update_id: Mapped[UUID] = mapped_column(
+        ForeignKey("incoming_platform_updates.id", ondelete="RESTRICT"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(
+        String(64), default="ingress.received", nullable=False
+    )
+    schema_version: Mapped[int] = mapped_column(default=1, nullable=False)
+    status: Mapped[IngressOutboxStatus] = mapped_column(
+        string_enum(IngressOutboxStatus, "ingress_outbox_status"),
+        default=IngressOutboxStatus.PENDING,
+        nullable=False,
+    )
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_category: Mapped[str | None] = mapped_column(String(64))
+
+
+class PollingCursorModel(Base):
+    __tablename__ = "polling_cursors"
+
+    platform_connection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_connections.id", ondelete="RESTRICT"), primary_key=True
+    )
+    next_offset: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

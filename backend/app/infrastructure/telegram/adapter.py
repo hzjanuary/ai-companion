@@ -14,13 +14,15 @@ from app.application.ports.platform import (
     SendStickerRequest,
     SendTextRequest,
     SentMessage,
+    WebhookInfo,
 )
 from app.core.config import Settings
 from app.domain.persistence import Platform
+from app.infrastructure.telegram.updates import TelegramUpdate, parse_telegram_update
 
 
 class TelegramAdapter:
-    """Implements only getMe, sendMessage, sendSticker, and getChatMember."""
+    """Typed Telegram Bot API adapter; provider DTOs never cross its boundary."""
 
     def __init__(
         self, settings: Settings, client: httpx.AsyncClient | None = None
@@ -136,6 +138,105 @@ class TelegramAdapter:
             permissions=permissions,
         )
 
+    async def get_updates(
+        self,
+        *,
+        offset: str | None,
+        limit: int,
+        timeout_seconds: int,
+        allowed_updates: tuple[str, ...],
+    ) -> tuple[TelegramUpdate, ...]:
+        if not 1 <= limit <= 100 or timeout_seconds <= 0:
+            raise PlatformAdapterError(
+                PlatformErrorCategory.INVALID_REQUEST, "getUpdates"
+            )
+        payload: dict[str, Any] = {
+            "limit": limit,
+            "timeout": timeout_seconds,
+            "allowed_updates": list(allowed_updates),
+        }
+        if offset is not None:
+            try:
+                payload["offset"] = int(offset)
+            except ValueError as error:
+                raise PlatformAdapterError(
+                    PlatformErrorCategory.INVALID_REQUEST, "getUpdates"
+                ) from error
+        result = await self._request("getUpdates", payload, result_type=list)
+        return tuple(parse_telegram_update(item) for item in result)
+
+    async def set_webhook(
+        self,
+        *,
+        url: str,
+        secret_token: str,
+        allowed_updates: tuple[str, ...],
+        max_connections: int,
+        drop_pending_updates: bool = False,
+    ) -> None:
+        if not url.startswith("https://") or not 1 <= max_connections <= 100:
+            raise PlatformAdapterError(
+                PlatformErrorCategory.INVALID_REQUEST, "setWebhook"
+            )
+        result = await self._request(
+            "setWebhook",
+            {
+                "url": url,
+                "secret_token": secret_token,
+                "allowed_updates": list(allowed_updates),
+                "max_connections": max_connections,
+                "drop_pending_updates": drop_pending_updates,
+            },
+            result_type=bool,
+        )
+        if result is not True:
+            raise PlatformAdapterError(
+                PlatformErrorCategory.UNSUPPORTED_RESPONSE, "setWebhook"
+            )
+
+    async def delete_webhook(self, *, drop_pending_updates: bool = False) -> None:
+        result = await self._request(
+            "deleteWebhook",
+            {"drop_pending_updates": drop_pending_updates},
+            result_type=bool,
+        )
+        if result is not True:
+            raise PlatformAdapterError(
+                PlatformErrorCategory.UNSUPPORTED_RESPONSE, "deleteWebhook"
+            )
+
+    async def get_webhook_info(self) -> WebhookInfo:
+        result = await self._request("getWebhookInfo", {})
+        raw_allowed = result.get("allowed_updates", [])
+        if not isinstance(raw_allowed, list) or not all(
+            isinstance(item, str) for item in raw_allowed
+        ):
+            raise PlatformAdapterError(
+                PlatformErrorCategory.MALFORMED_RESPONSE, "getWebhookInfo"
+            )
+        raw_date = result.get("last_error_date")
+        return WebhookInfo(
+            url=self._string(result, "url", "getWebhookInfo"),
+            pending_update_count=self._integer(
+                result, "pending_update_count", "getWebhookInfo"
+            ),
+            allowed_updates=tuple(raw_allowed),
+            max_connections=self._optional_integer(
+                result, "max_connections", "getWebhookInfo"
+            ),
+            last_error_at=datetime.fromtimestamp(raw_date, UTC)
+            if isinstance(raw_date, int)
+            else None,
+            last_error_message=self._optional_string(
+                result, "last_error_message", "getWebhookInfo"
+            ),
+            ip_address=self._optional_string(result, "ip_address", "getWebhookInfo"),
+            has_custom_certificate=self._optional_bool(
+                result, "has_custom_certificate", "getWebhookInfo"
+            )
+            is True,
+        )
+
     def _add_send_options(
         self, payload: dict[str, Any], request: SendTextRequest | SendStickerRequest
     ) -> None:
@@ -148,7 +249,9 @@ class TelegramAdapter:
         if request.protect_content is not None:
             payload["protect_content"] = request.protect_content
 
-    async def _request(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _request(
+        self, operation: str, payload: dict[str, Any], result_type: type[object] = dict
+    ) -> Any:
         try:
             response = await self._client.post(
                 f"{self._base_url}/bot{self._token}/{operation}", json=payload
@@ -173,7 +276,7 @@ class TelegramAdapter:
             )
         if envelope["ok"] is True:
             result = envelope.get("result")
-            if not isinstance(result, dict):
+            if not isinstance(result, result_type):
                 raise PlatformAdapterError(
                     PlatformErrorCategory.MALFORMED_RESPONSE, operation
                 )
@@ -270,6 +373,26 @@ class TelegramAdapter:
                 PlatformErrorCategory.MALFORMED_RESPONSE, operation
             )
         return raw
+
+    def _integer(self, value: dict[str, Any], key: str, operation: str) -> int:
+        raw = value.get(key)
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise PlatformAdapterError(
+                PlatformErrorCategory.MALFORMED_RESPONSE, operation
+            )
+        return raw
+
+    def _optional_integer(
+        self, value: dict[str, Any], key: str, operation: str
+    ) -> int | None:
+        raw = value.get(key)
+        if raw is None:
+            return None
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise PlatformAdapterError(
+                PlatformErrorCategory.MALFORMED_RESPONSE, operation
+            )
+        return int(raw)
 
 
 def create_telegram_adapter(settings: Settings) -> TelegramAdapter | None:
