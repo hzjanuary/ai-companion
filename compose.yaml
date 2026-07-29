@@ -1,0 +1,10 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${JANUARY_HOST_PORT:-8000}:8000"
+    environment:
+      JANUARY_ENVIRONMENT: local
+      JANUARY_LOG_LEVEL: INFO

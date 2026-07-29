@@ -31,6 +31,15 @@ signals, and application behavior remain authoritative. Harness adds navigation
 and working-memory structure around that truth; it does not install upstream
 `repository-harness` product documents over it.
 
+## January Application
+
+- `product/SPEC.md`: canonical product contract.
+- `ARCHITECTURE.md`: January's module boundaries and runtime shape.
+- `HARNESS.md`: installed Harness status and its repository-centered boundary.
+- `runbooks/local-development.md`: backend setup, validation, and local runtime.
+- `plans/active/telegram-social-ai-mvp.md`: durable MVP execution plan.
+- `decisions/0001-backend-bootstrap-boundaries.md`: accepted bootstrap architecture decision.
+
 ## Source-Repository Indexes
 
 The following material is deliberately outside the default installation:

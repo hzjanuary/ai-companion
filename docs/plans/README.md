@@ -28,4 +28,4 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
-No active execution plans are currently indexed.
+- [Telegram Social AI MVP](active/telegram-social-ai-mvp.md)
