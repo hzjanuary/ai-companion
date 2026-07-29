@@ -153,6 +153,14 @@ It runs pytest, Ruff lint, Ruff formatting verification, mypy, Harness status
 and doctor checks, and `git diff --check` when Git is available. No external
 service or credential is required.
 
+For SPEC-009 PostgreSQL/Redis personality, snapshot, policy, and fake-adapter
+proofs, run:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 \
+  ./scripts/validate-personality.sh
+```
+
 ## Guarded Telegram Demo
 
 The optional polling-only dedicated-bot workflow is documented in

@@ -42,6 +42,7 @@ from app.domain.persistence import (
     MessageProcessingStatus,
     MessageType,
     ParticipantRole,
+    PersonalityProfileStatus,
     Platform,
     PlatformConnectionStatus,
     ResponseMode,
@@ -78,6 +79,9 @@ class AssistantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=AssistantStatus.ACTIVE,
         nullable=False,
     )
+    default_personality_profile_version_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("personality_profile_versions.id", ondelete="RESTRICT"), index=True
+    )
 
 
 class PlatformConnectionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -99,6 +103,58 @@ class PlatformConnectionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     credential_reference: Mapped[str | None] = mapped_column(String(255))
     configuration: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
+    )
+
+
+class PersonalityProfileModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "personality_profiles"
+    __table_args__ = (UniqueConstraint("assistant_id", "slug"),)
+
+    assistant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("assistants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[PersonalityProfileStatus] = mapped_column(
+        string_enum(PersonalityProfileStatus, "personality_profile_status"),
+        default=PersonalityProfileStatus.ACTIVE,
+        nullable=False,
+    )
+
+
+class PersonalityProfileVersionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "personality_profile_versions"
+    __table_args__ = (UniqueConstraint("profile_id", "version_number"),)
+
+    profile_id: Mapped[UUID] = mapped_column(
+        ForeignKey("personality_profiles.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    version_number: Mapped[int] = mapped_column(nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_source: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_actor: Mapped[str | None] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    primary_language: Mapped[str] = mapped_column(String(16), nullable=False)
+    self_reference: Mapped[str] = mapped_column(String(32), nullable=False)
+    default_length: Mapped[str] = mapped_column(String(16), nullable=False)
+    formality: Mapped[str] = mapped_column(String(16), nullable=False)
+    humor_level: Mapped[float] = mapped_column(nullable=False)
+    teasing_level: Mapped[float] = mapped_column(nullable=False)
+    emoji_frequency: Mapped[float] = mapped_column(nullable=False)
+    sticker_frequency: Mapped[float] = mapped_column(nullable=False)
+    use_member_names: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    use_inside_jokes: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    ask_follow_up_questions: Mapped[str] = mapped_column(String(16), nullable=False)
+    allow_sensitive_teasing: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    stop_teasing_on_request: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reveal_private_memory_in_groups: Mapped[bool] = mapped_column(
+        Boolean, nullable=False
     )
 
 
@@ -128,6 +184,10 @@ class ConversationModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=ResponseMode.MENTION_ONLY,
         nullable=False,
     )
+    current_configuration_revision_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversation_configuration_revisions.id", ondelete="RESTRICT"),
+        index=True,
+    )
     settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
     )
@@ -140,6 +200,38 @@ class ConversationModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_platform_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+
+
+class ConversationConfigurationRevisionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "conversation_configuration_revisions"
+    __table_args__ = (UniqueConstraint("conversation_id", "revision_number"),)
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    revision_number: Mapped[int] = mapped_column(nullable=False)
+    personality_profile_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("personality_profile_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    response_mode: Mapped[ResponseMode] = mapped_column(
+        string_enum(ResponseMode, "configuration_response_mode"), nullable=False
+    )
+    stickers_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    default_length: Mapped[str | None] = mapped_column(String(16))
+    formality: Mapped[str | None] = mapped_column(String(16))
+    humor_level: Mapped[float | None] = mapped_column()
+    teasing_level: Mapped[float | None] = mapped_column()
+    emoji_frequency: Mapped[float | None] = mapped_column()
+    sticker_frequency: Mapped[float | None] = mapped_column()
+    use_member_names: Mapped[bool | None] = mapped_column(Boolean)
+    ask_follow_up_questions: Mapped[str | None] = mapped_column(String(16))
+    change_source: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_participant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), index=True
+    )
+    reason_code: Mapped[str | None] = mapped_column(String(64))
 
 
 class ParticipantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -357,6 +449,13 @@ class ResponsePlanningJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     message_id: Mapped[UUID] = mapped_column(
         ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    personality_profile_version_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("personality_profile_versions.id", ondelete="RESTRICT"), index=True
+    )
+    configuration_revision_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("conversation_configuration_revisions.id", ondelete="RESTRICT"),
+        index=True,
     )
     status: Mapped[PlanningJobStatus] = mapped_column(
         string_enum(PlanningJobStatus, "response_planning_job_status"),

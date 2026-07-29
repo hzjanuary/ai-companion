@@ -32,6 +32,7 @@ markers = [
   "planning_integration: requires the project-owned PostgreSQL and Redis services",
   "delivery_integration: requires the project-owned PostgreSQL and Redis services",
   "demo_integration: proves guarded local-demo behavior with fake adapters",
+  "personality_integration: requires project PostgreSQL personality configuration schema",
 ]
 
 [tool.ruff]

@@ -37,6 +37,7 @@ from app.infrastructure.database.models import (
     PlatformConnectionModel,
     ResponsePlanningJobModel,
 )
+from app.infrastructure.database.personality import ensure_conversation_configuration
 
 
 class ConversationProcessingError(ValueError):
@@ -51,10 +52,12 @@ class SqlAlchemyConversationProcessor:
         session_factory: async_sessionmaker[AsyncSession],
         prompt_version: str = "spec-006-v1",
         response_schema_version: str = "response-plan-v1",
+        stickers_enabled: bool = False,
     ) -> None:
         self._session_factory = session_factory
         self._prompt_version = prompt_version
         self._response_schema_version = response_schema_version
+        self._stickers_enabled = stickers_enabled
 
     async def process(
         self,
@@ -136,6 +139,9 @@ class SqlAlchemyConversationProcessor:
         if normalized.conversation.platform_connection_id != connection.id:
             raise ConversationProcessingError("normalized connection mismatch")
         conversation = await self._upsert_conversation(session, normalized)
+        configuration = await ensure_conversation_configuration(
+            session, assistant, conversation, stickers_enabled=self._stickers_enabled
+        )
         if isinstance(normalized, NormalizedMembership):
             participant = await self._upsert_participant(
                 session,
@@ -200,6 +206,18 @@ class SqlAlchemyConversationProcessor:
         session.add(record)
         await session.flush()
         if decision.eligible:
+            if (
+                conversation.status == ConversationStatus.PAUSED
+                or configuration.response_mode.value == "paused"
+            ):
+                return ConversationProcessResult(
+                    incoming_update_id=incoming.id,
+                    duplicate=False,
+                    outcome=record.outcome.value,
+                    conversation_id=conversation.id,
+                    message_id=message.id,
+                    eligibility=decision,
+                )
             session.add(
                 ResponsePlanningJobModel(
                     conversation_processing_record_id=record.id,
@@ -207,6 +225,8 @@ class SqlAlchemyConversationProcessor:
                     message_id=message.id,
                     prompt_version=self._prompt_version,
                     response_schema_version=self._response_schema_version,
+                    personality_profile_version_id=configuration.personality_profile_version_id,
+                    configuration_revision_id=configuration.id,
                 )
             )
             await session.flush()

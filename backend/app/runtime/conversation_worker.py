@@ -117,7 +117,10 @@ async def run() -> None:
     database = Database(settings)
     queue = RedisIngressQueue(settings)
     await database.start()
-    processor = SqlAlchemyConversationProcessor(database.session_factory)
+    processor = SqlAlchemyConversationProcessor(
+        database.session_factory,
+        stickers_enabled=bool(settings.telegram_sticker_mapping),
+    )
     try:
         while True:
             try:

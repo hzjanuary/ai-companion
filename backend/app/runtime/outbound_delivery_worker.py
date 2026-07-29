@@ -27,6 +27,7 @@ from app.domain.persistence import AssistantStatus
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
     AssistantModel,
+    ConversationConfigurationRevisionModel,
     ConversationModel,
     MessageModel,
     OutboundActionModel,
@@ -90,6 +91,19 @@ async def consume_once(
                         DeliveryAttemptStatus.REJECTED,
                         DeliveryCertainty.NOT_SENT,
                         error_category="conversation_not_allowed",
+                    )
+                    continue
+                if (
+                    action.kind == OutboundActionKind.STICKER
+                    and not await _stickers_allowed(database, conversation)
+                ):
+                    await repository.finalize(
+                        action.id,
+                        owner,
+                        OutboundActionStatus.SKIPPED,
+                        DeliveryAttemptStatus.REJECTED,
+                        DeliveryCertainty.NOT_SENT,
+                        error_category="stickers_disabled",
                     )
                     continue
                 capability = (
@@ -200,6 +214,20 @@ async def _resolve(
             by_id[identifier] for identifier in identifiers if identifier in by_id
         ]
         return conversation, reply, participants
+
+
+async def _stickers_allowed(
+    database: Database, conversation: ConversationModel
+) -> bool:
+    """Use the current safety projection immediately before external delivery."""
+    if conversation.current_configuration_revision_id is None:
+        return False
+    async with database.session_factory() as session:
+        revision = await session.get(
+            ConversationConfigurationRevisionModel,
+            conversation.current_configuration_revision_id,
+        )
+        return revision.stickers_enabled if revision is not None else False
 
 
 async def _send(

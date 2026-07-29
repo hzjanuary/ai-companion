@@ -8,6 +8,7 @@ from sqlalchemy import func, select, text
 
 from app.application.ingress import IngressEnvelope
 from app.application.model_provider import ProviderResult, ProviderUsage
+from app.application.personality import PersonalityOverrides
 from app.application.ports.platform import PlatformCapability, SentMessage, WebhookInfo
 from app.core.config import Settings
 from app.domain.persistence import (
@@ -16,13 +17,19 @@ from app.domain.persistence import (
     IngressSource,
     Platform,
     PlatformConnectionStatus,
+    ResponseMode,
 )
 from app.domain.planning import ProviderId
 from app.infrastructure.database.conversation import SqlAlchemyConversationProcessor
 from app.infrastructure.database.database import Database
+from app.infrastructure.database.group_configuration import (
+    ConfigurationChange,
+    SqlAlchemyGroupConfigurationService,
+)
 from app.infrastructure.database.ingress import SqlAlchemyDurableIngressRepository
 from app.infrastructure.database.models import (
     AssistantModel,
+    ConversationModel,
     ConversationProcessingRecordModel,
     IncomingPlatformUpdateModel,
     IngressOutboxEventModel,
@@ -86,6 +93,7 @@ def envelope(
     connection_id: UUID,
     update_id: str = "4000000000",
     chat_id: int = 4_000_000_001,
+    message_id: int = 4_000_000_000,
 ) -> IngressEnvelope:
     return IngressEnvelope(
         platform=Platform.TELEGRAM,
@@ -98,7 +106,7 @@ def envelope(
         raw_payload={
             "update_id": int(update_id),
             "message": {
-                "message_id": 4_000_000_000,
+                "message_id": message_id,
                 "date": 1_700_000_000,
                 "chat": {"id": chat_id, "type": "private"},
                 "from": {
@@ -281,7 +289,11 @@ def test_eligible_ingress_creates_one_durable_response_plan(settings: Settings) 
         model = "fake-model"
         capabilities = None
 
+        def __init__(self) -> None:
+            self.requests: list[object] = []
+
         async def generate(self, request: object) -> object:
+            self.requests.append(request)
             message_id = request.context.current.id  # type: ignore[attr-defined]
             return ProviderResult(
                 ProviderId.OLLAMA,
@@ -336,10 +348,30 @@ def test_eligible_ingress_creates_one_durable_response_plan(settings: Settings) 
             == 1
         )
         async with database.session_factory() as session:
-            assert (
-                await session.scalar(select(func.count(ResponsePlanningJobModel.id)))
-                == 1
+            job = await session.scalar(select(ResponsePlanningJobModel))
+            assert job is not None
+            assert job.personality_profile_version_id is not None
+            assert job.configuration_revision_id is not None
+            conversation = await session.get(ConversationModel, job.conversation_id)
+            connection = (
+                await session.get(
+                    PlatformConnectionModel, conversation.platform_connection_id
+                )
+                if conversation is not None
+                else None
             )
+            assert conversation is not None and connection is not None
+            assistant_id = connection.assistant_id
+            conversation_id = conversation.id
+        revision = await SqlAlchemyGroupConfigurationService(
+            database.session_factory
+        ).apply(
+            conversation_id,
+            assistant_id,
+            ConfigurationChange(overrides=PersonalityOverrides(humor_level=0.1)),
+            expected_revision=1,
+        )
+        assert revision.revision_number == 2
         configured = settings.model_copy(
             update={
                 "telegram_enabled": True,
@@ -359,6 +391,7 @@ def test_eligible_ingress_creates_one_durable_response_plan(settings: Settings) 
             await consume_planning_once(configured, database, "planning-test", fake)
             == 1
         )  # type: ignore[arg-type]
+        assert '"configuration_revision_number":1' in fake.requests[0].user_content  # type: ignore[attr-defined]
         assert (
             await consume_planning_once(configured, database, "planning-test", fake)
             == 0
@@ -401,10 +434,44 @@ def test_eligible_ingress_creates_one_durable_response_plan(settings: Settings) 
         trace_stages = trace["trace"]
         assert trace_stages["ingress_outbox"]["status"] == "published"
         assert len(trace_stages["planning_jobs"]) == 1
+        assert trace_stages["planning_jobs"][0]["configuration_revision_id"] is not None
+        assert (
+            trace_stages["planning_jobs"][0]["personality_profile_version_id"]
+            is not None
+        )
         assert len(trace_stages["generation_attempts"]) == 1
         assert len(trace_stages["response_plans"]) == 1
         assert trace_stages["outbound_actions"][0]["status"] == "delivered"
         assert trace_stages["delivery_attempts"][0]["certainty"] == "confirmed"
+        paused = await SqlAlchemyGroupConfigurationService(
+            database.session_factory
+        ).apply(
+            conversation_id,
+            assistant_id,
+            ConfigurationChange(response_mode=ResponseMode.PAUSED),
+            expected_revision=2,
+        )
+        assert paused.revision_number == 3
+        await repository.accept(
+            envelope(connection_id, "5000000001", message_id=4_000_000_001)
+        )
+        assert await dispatch_once(configured, repository, queue) == 1
+        assert (
+            await consume_once(configured, database, queue, processor, "paused-source")
+            == 1
+        )
+        async with database.session_factory() as session:
+            assert (
+                await session.scalar(select(func.count(ResponsePlanningJobModel.id)))
+                == 1
+            )
+        assert (
+            await consume_planning_once(configured, database, "planning-test", fake)
+            == 0
+        )  # type: ignore[arg-type]
+        assert await consume_delivery_once(configured, database, delivery) == 0  # type: ignore[arg-type]
+        assert len(fake.requests) == 1
+        assert len(delivery.requests) == 1
         await queue.aclose()
         await clear(database)
         await database.stop()

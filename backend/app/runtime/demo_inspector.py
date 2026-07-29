@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from app.core.config import Settings
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
+    ConversationConfigurationRevisionModel,
     ConversationModel,
     ConversationProcessingRecordModel,
     IncomingPlatformUpdateModel,
@@ -19,6 +20,7 @@ from app.infrastructure.database.models import (
     OutboundActionModel,
     OutboundDeliveryAttemptModel,
     OutboundRecoveryEventModel,
+    PersonalityProfileVersionModel,
     PlatformConnectionModel,
     ResponsePlanModel,
     ResponsePlanningJobModel,
@@ -122,6 +124,36 @@ async def inspect_latest(
                 if connection is not None
                 else None,
             }
+            configuration_summary: dict[str, object] | None = None
+            if conversation_id is not None:
+                conversation = await session.get(ConversationModel, conversation_id)
+                revision = (
+                    await session.get(
+                        ConversationConfigurationRevisionModel,
+                        conversation.current_configuration_revision_id,
+                    )
+                    if conversation is not None
+                    and conversation.current_configuration_revision_id is not None
+                    else None
+                )
+                version = (
+                    await session.get(
+                        PersonalityProfileVersionModel,
+                        revision.personality_profile_version_id,
+                    )
+                    if revision is not None
+                    else None
+                )
+                if revision is not None and version is not None:
+                    configuration_summary = {
+                        "configuration_revision_id": str(revision.id),
+                        "configuration_revision_number": revision.revision_number,
+                        "personality_profile_version_id": str(version.id),
+                        "personality_profile_version_number": version.version_number,
+                        "response_mode": revision.response_mode.value,
+                        "stickers_enabled": revision.stickers_enabled,
+                    }
+            summary["personality_configuration"] = configuration_summary
             if update is None:
                 return {"latest_update": None, **summary}
             record = await session.scalar(
@@ -268,6 +300,16 @@ async def inspect_latest(
                             if job.selected_provider
                             else None,
                             "model": job.selected_model,
+                            "personality_profile_version_id": str(
+                                job.personality_profile_version_id
+                            )
+                            if job.personality_profile_version_id
+                            else None,
+                            "configuration_revision_id": str(
+                                job.configuration_revision_id
+                            )
+                            if job.configuration_revision_id
+                            else None,
                             "error_category": job.last_error_category.value
                             if job.last_error_category
                             else None,

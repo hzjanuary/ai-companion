@@ -6,6 +6,7 @@ import socket
 from uuid import UUID
 
 from app.application.model_provider import ModelProvider
+from app.application.personality import merge_effective
 from app.application.planning_service import generate_validated_plan
 from app.application.prompting import build_generation_request
 from app.application.response_plan import ResponsePlanPolicy
@@ -18,7 +19,13 @@ from app.domain.planning import (
 )
 from app.infrastructure.database.context import SqlAlchemyConversationContextReader
 from app.infrastructure.database.database import Database
-from app.infrastructure.database.models import ConversationModel
+from app.infrastructure.database.models import (
+    ConversationConfigurationRevisionModel,
+    ConversationModel,
+    PersonalityProfileModel,
+    PersonalityProfileVersionModel,
+)
+from app.infrastructure.database.personality import revision_overrides, version_values
 from app.infrastructure.database.planning import SqlAlchemyPlanningRepository
 from app.infrastructure.model_providers import create_model_provider
 
@@ -74,7 +81,43 @@ async def consume_once(
                 continue
             async with database.session_factory() as session:
                 conversation = await session.get(ConversationModel, job.conversation_id)
-            if conversation is None:
+                current_revision = (
+                    await session.get(
+                        ConversationConfigurationRevisionModel,
+                        conversation.current_configuration_revision_id,
+                    )
+                    if conversation is not None
+                    and conversation.current_configuration_revision_id is not None
+                    else None
+                )
+                revision = (
+                    await session.get(
+                        ConversationConfigurationRevisionModel,
+                        job.configuration_revision_id,
+                    )
+                    if job.configuration_revision_id
+                    else None
+                )
+                version = (
+                    await session.get(
+                        PersonalityProfileVersionModel,
+                        job.personality_profile_version_id,
+                    )
+                    if job.personality_profile_version_id
+                    else None
+                )
+                profile = (
+                    await session.get(PersonalityProfileModel, version.profile_id)
+                    if version is not None
+                    else None
+                )
+            if (
+                conversation is None
+                or current_revision is None
+                or revision is None
+                or version is None
+                or profile is None
+            ):
                 await repository.complete(
                     job.id,
                     lease_owner,
@@ -86,6 +129,30 @@ async def consume_once(
                     job.response_schema_version,
                 )
                 continue
+            if (
+                conversation.status.value == "paused"
+                or current_revision.response_mode.value == "paused"
+            ):
+                await repository.complete(
+                    job.id,
+                    lease_owner,
+                    None,
+                    None,
+                    None,
+                    None,
+                    job.prompt_version,
+                    job.response_schema_version,
+                )
+                continue
+            effective = merge_effective(
+                version_values(version),
+                revision_overrides(revision),
+                profile_id=profile.id,
+                profile_version_id=version.id,
+                profile_version_number=version.version_number,
+                configuration_revision_id=revision.id,
+                configuration_revision_number=revision.revision_number,
+            )
             request = build_generation_request(
                 planning_job_id=job.id,
                 context=context,
@@ -94,9 +161,15 @@ async def consume_once(
                 maximum_output_tokens=settings.llm_max_output_tokens,
                 conversation_type=conversation.conversation_type.value,
                 response_mode=conversation.response_mode.value,
+                effective_personality=effective,
+                stickers_enabled=revision.stickers_enabled,
             )
             policy = ResponsePlanPolicy(
-                settings.response_plan_text_limit, frozenset(StickerIntent)
+                min(
+                    settings.response_plan_text_limit,
+                    280 if effective["default_length"] == "short" else 500,
+                ),
+                frozenset(StickerIntent) if revision.stickers_enabled else frozenset(),
             )
 
             async def record(

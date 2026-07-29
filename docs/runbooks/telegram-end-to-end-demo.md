@@ -71,3 +71,36 @@ action/delivery attempt, and outgoing Message. Restarting must not send again.
 On failure inspect active-webhook, Privacy Mode, provider auth/rate-limit/
 timeout, bot membership, sticker mapping, and PostgreSQL/Redis state. Stop with
 `./scripts/january-demo.sh down`; it preserves volumes and delivery records.
+
+## Personality Configuration Acceptance
+
+This is an operator-owned live procedure, not CI evidence. With the guarded
+demo already running, locate the internal conversation UUID with `inspect` and
+use the local-only configuration CLI. The CLI does not contact Telegram or the
+provider.
+
+```bash
+PYTHONPATH=backend uv run python -m app.runtime.group_configuration --json \
+  show-effective --conversation-id CONVERSATION_UUID
+# Send one eligible message, then inspect its planning job snapshot IDs.
+PYTHONPATH=backend uv run python -m app.runtime.demo_inspector \
+  --conversation-id CONVERSATION_UUID
+PYTHONPATH=backend uv run python -m app.runtime.group_configuration --json \
+  create-profile --assistant-id ASSISTANT_UUID --slug calmer \
+  --display-name Calmer --apply
+PYTHONPATH=backend uv run python -m app.runtime.group_configuration --json \
+  create-version --profile-id PROFILE_UUID --humor-level 0.2 \
+  --teasing-level 0 --apply
+PYTHONPATH=backend uv run python -m app.runtime.group_configuration --json set \
+  --conversation-id CONVERSATION_UUID --profile-version-id PROFILE_VERSION_UUID \
+  --expected-revision REVISION --apply
+```
+
+Send a comparable eligible message and inspect it: its profile version and
+configuration revision IDs must differ from the prior job. Inspect another
+conversation to confirm its current revision is unchanged. Disable stickers
+with `set --stickers-enabled false`, verify no later sticker action is sent,
+then pause with `pause --apply`; no new job, model call, or reply should occur.
+Resume only with an explicit non-paused mode, such as `resume --response-mode
+mention_only --apply`, and stop the demo safely. Tone is probabilistic; accept
+the procedure based on persisted IDs and policy effects, not subjective output.

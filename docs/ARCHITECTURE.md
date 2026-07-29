@@ -79,3 +79,12 @@ SPEC-008 adds only explicit runtime composition for local operators. Demo
 allowlisting happens before conversation persistence, bootstrap reconciles safe
 identity metadata transactionally, and all five workers remain separate from
 the API process.
+
+SPEC-009 adds typed personality values in `application` and immutable profile
+and conversation-configuration persistence in `infrastructure/database`.
+Operator mutation remains a local runtime CLI; no personality HTTP or Telegram
+command surface exists. Planning receives immutable job snapshots and performs
+provider I/O only after checking the current conversation safety projection.
+Outbound delivery similarly checks current sticker enablement immediately before
+Telegram I/O. ORM models and provider/platform clients do not enter the
+personality application module.

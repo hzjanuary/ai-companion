@@ -81,6 +81,23 @@ Every response includes `X-Request-ID`. A syntactically valid incoming value is
 preserved; otherwise one is generated. Unhandled failures return a safe JSON
 error with the same request ID.
 
+## Personality Configuration
+
+SPEC-009 keeps personality as typed, immutable profile versions and applies
+conversation-specific immutable revisions. New conversations reconcile to the
+Assistant's `January Default` profile with `mention_only` mode and stickers
+disabled by default. Planning jobs snapshot the selected profile version and
+configuration revision in their creation transaction; the planning worker uses
+that snapshot deterministically, while checking the current revision before
+provider I/O. A newly paused configuration therefore blocks new and claimed
+planning work. The outbound worker rechecks current sticker enablement before
+Telegram I/O and skips stale sticker actions when disabled.
+
+Use the local-only CLI documented in
+[`docs/runbooks/group-configuration.md`](../docs/runbooks/group-configuration.md).
+It has no public HTTP or Telegram administration path. Full prompts and
+operator-provided free-form instructions are intentionally unsupported.
+
 ## Outbound Delivery
 
 Response planning does not send directly. The optional outbound worker leases

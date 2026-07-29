@@ -41,6 +41,11 @@ class ResponseMode(StrEnum):
     PAUSED = "paused"
 
 
+class PersonalityProfileStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
 class ParticipantRole(StrEnum):
     MEMBER = "member"
     ADMINISTRATOR = "administrator"

@@ -76,3 +76,8 @@ jobs:
           JANUARY_ENVIRONMENT: test
           JANUARY_DATABASE_HOST: 127.0.0.1
           JANUARY_REDIS_URL: redis://127.0.0.1:6379/0
+      - run: uv run alembic downgrade 0005_outbound_delivery && uv run alembic upgrade head && uv run pytest backend/tests/test_personality.py && uv run pytest -m 'planning_integration or personality_integration'
+        env:
+          JANUARY_ENVIRONMENT: test
+          JANUARY_DATABASE_HOST: 127.0.0.1
+          JANUARY_REDIS_URL: redis://127.0.0.1:6379/0

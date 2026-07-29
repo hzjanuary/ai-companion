@@ -94,6 +94,18 @@ Out of scope:
   doctor, process lifecycle commands, durable inspection, CI, and synthetic
   pipeline proof. Dedicated-bot/provider operation remains an explicit
   operator-owned manual acceptance step and is not CI evidence.
+- [x] SPEC-009: added immutable typed profile versions and per-conversation
+  configuration revisions in migration `0006_personality_config`, idempotent
+  default/reconciliation services, job snapshots, deterministic prompt/policy
+  integration, safe local operator CLI, inspector summaries, and a focused ADR
+  and runbooks. Validation passed 86 no-network tests, every prior database,
+  ingress, conversation, planning, delivery, and demo validator, plus
+  `validate-personality.sh` with migration upgrade/downgrade/re-upgrade and
+  fake adapters only. The synthetic flow proves snapshot persistence after a
+  newer revision, conversation isolation, pause suppression, replay safety, and
+  stale sticker suppression. `january-backend:spec-009` built; after applying
+  `0006` to an isolated Compose PostgreSQL instance on port 5434, `/`,
+  `/health`, `/live`, `/ready`, and `/docs` returned HTTP 200 on port 8009.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -186,6 +198,17 @@ Out of scope:
   Compose runtime returned 200 for `/`, `/health`, `/live`, `/ready`, and
   `/docs`, then was removed. No Telegram identity, update, send, or provider
   call was made.
+- SPEC-009 proof: `./scripts/validate.sh` passed 86 no-network tests, Ruff,
+  strict mypy, Harness, and diff checks. `validate-db.sh` and
+  `validate-personality.sh` exercised migration `0006_personality_config`
+  through upgrade, downgrade-to-base, and re-upgrade. Ingress/planning tests
+  prove immutable job snapshots survive later configuration changes and paused
+  revisions create no new job; delivery tests prove a newer disabled-sticker
+  revision skips queued sticker work before adapter I/O. All prior validators
+  passed against only project PostgreSQL/Redis and fake adapters. Docker built
+  `january-backend:spec-009`; isolated Compose with migration `0006` returned
+  200 for `/`, `/health`, `/live`, `/ready`, and `/docs`. No credential or
+  public Telegram/provider call occurred.
 
 ## Result
 

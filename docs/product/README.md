@@ -24,6 +24,7 @@ contract, implementation, and executable tests.
 - [SPEC-006 LLM Provider and Response Planning](specs/SPEC-006-llm-provider-and-response-planning.md)
 - [SPEC-007 Outbound Actions, Delivery, and Idempotency](specs/SPEC-007-outbound-actions-delivery-idempotency.md)
 - [SPEC-008 Operator Bootstrap and End-to-End Demo](specs/SPEC-008-operator-bootstrap-end-to-end-demo.md)
+- [SPEC-009 Personality Profiles and Group Configuration](specs/SPEC-009-personality-profiles-and-group-configuration.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule

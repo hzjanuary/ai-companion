@@ -20,8 +20,12 @@ from app.domain.persistence import (
     PlatformConnectionStatus,
     ResponseMode,
 )
-from app.domain.planning import PlanReasonCode
+from app.domain.planning import PlanReasonCode, StickerIntent
 from app.infrastructure.database.database import Database
+from app.infrastructure.database.group_configuration import (
+    ConfigurationChange,
+    SqlAlchemyGroupConfigurationService,
+)
 from app.infrastructure.database.models import (
     AssistantModel,
     ConversationModel,
@@ -36,6 +40,7 @@ from app.infrastructure.database.models import (
     ResponsePlanningJobModel,
 )
 from app.infrastructure.database.outbound import SqlAlchemyOutboundRepository
+from app.infrastructure.database.personality import ensure_conversation_configuration
 from app.runtime.outbound_delivery_worker import consume_once
 
 
@@ -259,6 +264,56 @@ def test_confirmed_delivery_persists_one_outgoing_message_and_is_idempotent() ->
             assert skipped is not None
             assert skipped.status == OutboundActionStatus.SKIPPED
             assert skipped.last_error_category == "conversation_not_allowed"
+            conversation_id = action.conversation_id
+        async with database.session_factory() as session:
+            async with session.begin():
+                conversation = await session.get(ConversationModel, conversation_id)
+                assert conversation is not None
+                connection = await session.get(
+                    PlatformConnectionModel, conversation.platform_connection_id
+                )
+                assert connection is not None
+                assistant = await session.get(AssistantModel, connection.assistant_id)
+                assert assistant is not None
+                current = await ensure_conversation_configuration(
+                    session, assistant, conversation
+                )
+                assistant_id = assistant.id
+        service = SqlAlchemyGroupConfigurationService(database.session_factory)
+        enabled = await service.apply(
+            conversation_id,
+            assistant_id,
+            ConfigurationChange(stickers_enabled=True),
+            current.revision_number,
+        )
+        async with database.session_factory() as session:
+            async with session.begin():
+                stale = OutboundActionModel(
+                    response_plan_id=action.response_plan_id,
+                    conversation_id=conversation_id,
+                    sequence_number=4,
+                    idempotency_key="d" * 64,
+                    kind=OutboundActionKind.STICKER,
+                    sticker_intent=StickerIntent.LAUGH,
+                    mention_participant_ids=[],
+                )
+                session.add(stale)
+                await session.flush()
+                stale_id = stale.id
+        disabled = await service.apply(
+            conversation_id,
+            assistant_id,
+            ConfigurationChange(stickers_enabled=False),
+            enabled.revision_number,
+        )
+        assert disabled.revision_number == enabled.revision_number + 1
+        assert await consume_once(settings, database, fake) == 1  # type: ignore[arg-type]
+        assert len(fake.requests) == 1
+        async with database.session_factory() as session:
+            stale = await session.get(OutboundActionModel, stale_id)
+            assert stale is not None
+            assert stale.status == OutboundActionStatus.SKIPPED
+            assert stale.last_error_category == "stickers_disabled"
         await database.stop()
 
     asyncio.run(scenario())

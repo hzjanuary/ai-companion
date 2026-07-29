@@ -8,6 +8,7 @@ from app.application.ports.platform import BotIdentity
 from app.core.config import Settings
 from app.domain.persistence import AssistantStatus, Platform, PlatformConnectionStatus
 from app.infrastructure.database.models import AssistantModel, PlatformConnectionModel
+from app.infrastructure.database.personality import ensure_assistant_default
 
 
 class BootstrapConflictError(RuntimeError):
@@ -107,6 +108,7 @@ class SqlAlchemyOperatorBootstrap:
                     "can_join_groups": identity.can_join_groups,
                     "can_read_all_group_messages": identity.can_read_all_group_messages,
                 }
+                await ensure_assistant_default(session, assistant)
                 return BootstrapResult(
                     assistant.id,
                     connection.id,
