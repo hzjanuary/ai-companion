@@ -80,6 +80,11 @@ Out of scope:
   dedicated consumer runtime, migration `0003_conversation_domain`, pure and
   PostgreSQL/Redis integration tests, documentation, and CI coverage without
   Telegram, LLM, or outgoing-message calls.
+- [x] SPEC-006: provider-neutral structured response planning adds migration
+  `0004_response_planning`, transactional eligible-job handoff, PostgreSQL
+  leases, durable attempts/plans, strict local policy, direct typed provider
+  adapters, bounded retry/correction/fallback, and a synthetic no-network
+  worker proof. It does not send Telegram actions.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -104,6 +109,9 @@ Out of scope:
   Telegram data at the infrastructure boundary and acknowledge Redis only after
   the transaction commits; record deterministic eligibility before future model
   work.
+- 2026-07-29: Use direct typed provider HTTP adapters and local strict plan
+  validation. PostgreSQL leasing owns durable planning coordination; model I/O
+  remains outside claim transactions and does not imply exactly-once generation.
 
 ## Validation
 
@@ -143,8 +151,15 @@ Out of scope:
   isolated Compose PostgreSQL service, `/`, `/health`, `/live`, `/ready`, and
   `/docs` each returned HTTP 200 on host port 8003; only project-owned services
   were stopped afterward.
+- SPEC-006 current proof: `./scripts/validate.sh` passed 73 no-network tests,
+  Ruff, strict mypy, Harness, and diff checks. Database, ingress, conversation,
+  and planning validators passed through `0004_response_planning`. Direct
+  provider mock transports cover OpenAI, Gemini, Groq, OpenRouter, and Ollama;
+  deterministic retry/correction/fallback and refusal tests pass. The disabled
+  LLM Compose stack built as `january-backend:spec-006` and `/`, `/health`,
+  `/live`, `/ready`, and `/docs` returned HTTP 200 on isolated port 8004.
 
 ## Result
 
-SPEC-001 through SPEC-005 are implemented. This plan remains active for the
-Telegram MVP; response generation and delivery behavior remain unimplemented.
+SPEC-001 through SPEC-006 are implemented. This plan remains active for the
+Telegram MVP; outbound delivery behavior remains unimplemented.

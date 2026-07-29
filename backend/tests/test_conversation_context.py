@@ -17,6 +17,7 @@ def message(
     return ContextMessage(
         id=identifier,
         conversation_id=conversation_id,
+        participant_id=uuid4(),
         platform_thread_id=thread,
         text=text,
         sent_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=minutes),

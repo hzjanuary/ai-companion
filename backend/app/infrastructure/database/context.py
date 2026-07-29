@@ -81,6 +81,7 @@ class SqlAlchemyConversationContextReader:
         return ContextMessage(
             id=message.id,
             conversation_id=message.conversation_id,
+            participant_id=message.participant_id,
             platform_thread_id=message.platform_thread_id,
             text=message.text,
             sent_at=message.platform_sent_at or message.created_at,

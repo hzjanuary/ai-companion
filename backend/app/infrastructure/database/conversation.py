@@ -35,6 +35,7 @@ from app.infrastructure.database.models import (
     MessageModel,
     ParticipantModel,
     PlatformConnectionModel,
+    ResponsePlanningJobModel,
 )
 
 
@@ -45,8 +46,15 @@ class ConversationProcessingError(ValueError):
 class SqlAlchemyConversationProcessor:
     """Own one business transaction; callers acknowledge only after return."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        prompt_version: str = "spec-006-v1",
+        response_schema_version: str = "response-plan-v1",
+    ) -> None:
         self._session_factory = session_factory
+        self._prompt_version = prompt_version
+        self._response_schema_version = response_schema_version
 
     async def process(
         self,
@@ -166,6 +174,17 @@ class SqlAlchemyConversationProcessor:
         )
         session.add(record)
         await session.flush()
+        if decision.eligible:
+            session.add(
+                ResponsePlanningJobModel(
+                    conversation_processing_record_id=record.id,
+                    conversation_id=conversation.id,
+                    message_id=message.id,
+                    prompt_version=self._prompt_version,
+                    response_schema_version=self._response_schema_version,
+                )
+            )
+            await session.flush()
         return ConversationProcessResult(
             incoming_update_id=incoming.id,
             duplicate=False,

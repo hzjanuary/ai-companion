@@ -15,6 +15,27 @@ def test_settings_defaults() -> None:
     assert settings.resolved_database_url.drivername == "postgresql+asyncpg"
     assert settings.telegram_delivery_mode == "disabled"
     assert settings.context_recent_message_limit == 20
+    assert settings.llm_enabled is False
+
+
+def test_llm_settings_require_remote_credentials_and_allow_keyless_ollama() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, llm_enabled=True, llm_openai_model="fake")
+    settings = Settings(
+        _env_file=None,
+        llm_enabled=True,
+        llm_primary_provider="ollama",
+        llm_ollama_model="fake-local",
+    )
+    assert settings.llm_ollama_model == "fake-local"
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            llm_enabled=True,
+            llm_primary_provider="ollama",
+            llm_ollama_model="fake",
+            llm_fallback_provider="ollama",
+        )
 
 
 def test_webhook_delivery_requires_complete_redacted_configuration() -> None:

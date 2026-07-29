@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0003_conversation_domain"
+                        and revision == "0004_response_planning"
                     )
         except Exception:
             return False

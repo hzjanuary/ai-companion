@@ -29,6 +29,7 @@ markers = [
   "integration: requires the project-owned PostgreSQL database",
   "ingress_integration: requires the project-owned PostgreSQL and Redis services",
   "conversation_integration: requires the project-owned PostgreSQL and Redis services",
+  "planning_integration: requires the project-owned PostgreSQL and Redis services",
 ]
 
 [tool.ruff]

@@ -61,3 +61,9 @@ are normalized before application policy runs; PostgreSQL commits normalized
 conversation state and the idempotency ledger before Redis acknowledgement.
 Context readers return application values rather than ORM models, raw payloads,
 or credentials. No LLM or outgoing-delivery dependency crosses this boundary.
+
+SPEC-006 adds a separate response-planning runtime. Provider HTTP JSON remains
+in infrastructure; application values carry only typed generation requests,
+results, and safe errors. PostgreSQL leases and immutable response plans make
+planning durable without claiming exactly-once generation or executing any
+platform action.

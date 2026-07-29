@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import httpx
@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.application.ingress import IngressEnvelope
+from app.application.model_provider import ProviderResult, ProviderUsage
 from app.application.ports.platform import WebhookInfo
 from app.core.config import Settings
 from app.domain.persistence import (
@@ -16,6 +17,7 @@ from app.domain.persistence import (
     Platform,
     PlatformConnectionStatus,
 )
+from app.domain.planning import ProviderId
 from app.infrastructure.database.conversation import SqlAlchemyConversationProcessor
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.ingress import SqlAlchemyDurableIngressRepository
@@ -24,12 +26,16 @@ from app.infrastructure.database.models import (
     ConversationProcessingRecordModel,
     IncomingPlatformUpdateModel,
     IngressOutboxEventModel,
+    ModelGenerationAttemptModel,
     PlatformConnectionModel,
+    ResponsePlanModel,
+    ResponsePlanningJobModel,
 )
 from app.infrastructure.queue.redis_streams import RedisIngressQueue
 from app.main import create_app
 from app.runtime.conversation_worker import consume_once
 from app.runtime.ingress_outbox_dispatcher import dispatch_once
+from app.runtime.response_planning_worker import consume_once as consume_planning_once
 from app.runtime.telegram_poller import poll_once
 
 
@@ -180,6 +186,79 @@ def test_conversation_worker_commits_before_ack_and_deduplicates(
             )
             == 1
         )
+        await queue.aclose()
+        await clear(database)
+        await database.stop()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+@pytest.mark.ingress_integration
+@pytest.mark.conversation_integration
+@pytest.mark.planning_integration
+def test_eligible_ingress_creates_one_durable_response_plan(settings: Settings) -> None:
+    class FakeProvider:
+        provider_id = ProviderId.OLLAMA
+        model = "fake-model"
+        capabilities = None
+
+        async def generate(self, request: object) -> object:
+            message_id = request.context.current.id  # type: ignore[attr-defined]
+            return ProviderResult(
+                ProviderId.OLLAMA,
+                self.model,
+                f'{{"should_respond":true,"reason_code":"social_reply","text":"hello","reply_to_message_id":"{message_id}","mentions":[],"sticker_intent":null,"confidence":0.8,"language":"vi"}}',
+                None,
+                ProviderUsage(None, None, None),
+                timedelta(),
+                "stop",
+            )
+
+        async def aclose(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        database = Database(settings)
+        queue = RedisIngressQueue(settings)
+        await database.start()
+        await clear(database, queue)
+        connection_id = await seed_connection(database)
+        repository = SqlAlchemyDurableIngressRepository(database.session_factory, 1)
+        await repository.accept(envelope(connection_id, "5000000000"))
+        assert await dispatch_once(settings, repository, queue) == 1
+        processor = SqlAlchemyConversationProcessor(database.session_factory)
+        assert (
+            await consume_once(settings, database, queue, processor, "planning-source")
+            == 1
+        )
+        async with database.session_factory() as session:
+            assert (
+                await session.scalar(select(func.count(ResponsePlanningJobModel.id)))
+                == 1
+            )
+        configured = settings.model_copy(
+            update={
+                "llm_enabled": True,
+                "llm_primary_provider": "ollama",
+                "llm_ollama_model": "fake-model",
+            }
+        )
+        fake = FakeProvider()
+        assert (
+            await consume_planning_once(configured, database, "planning-test", fake)
+            == 1
+        )  # type: ignore[arg-type]
+        assert (
+            await consume_planning_once(configured, database, "planning-test", fake)
+            == 0
+        )  # type: ignore[arg-type]
+        async with database.session_factory() as session:
+            assert (
+                await session.scalar(select(func.count(ModelGenerationAttemptModel.id)))
+                == 1
+            )
+            assert await session.scalar(select(func.count(ResponsePlanModel.id))) == 1
         await queue.aclose()
         await clear(database)
         await database.stop()

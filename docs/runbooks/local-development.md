@@ -99,6 +99,27 @@ JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-conver
 It uses synthetic durable Telegram updates only. No Telegram credential,
 network request, LLM, or outgoing message is involved.
 
+## Response Planning
+
+LLM planning is disabled by default and is a separate runtime. Set a provider,
+model, and required remote credential only in local operator configuration;
+Ollama is the keyless local option. Do not add provider credentials to source
+control.
+
+```bash
+uv run python -m app.runtime.response_planning_worker
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-planning.sh
+```
+
+The validation command uses a fake provider and synthetic context. It checks
+the `0004_response_planning` schema, leases, durable attempt/plan handoff, and
+duplicate worker execution without a public provider or Telegram request.
+
+For an explicitly configured operator, `./scripts/verify-model-provider.sh`
+checks configuration without network access. `--live` requires both LLM flags
+and sends one small synthetic structured request; it prints only provider,
+model, and local validation success.
+
 ## Validation
 
 Run the repository's canonical local validation command:

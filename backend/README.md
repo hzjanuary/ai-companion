@@ -61,6 +61,22 @@ JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-conver
 The worker commits business state and its idempotency ledger before it
 acknowledges Redis. It logs identifiers and outcomes, not message content.
 
+## Response Planning
+
+LLM integration is disabled by default. When explicitly enabled, the planning
+worker uses configured OpenAI, Gemini, Groq, OpenRouter, or local Ollama models
+through typed HTTP adapters. It stores validated platform-independent response
+plans only; it does not send Telegram messages.
+
+```bash
+uv run python -m app.runtime.response_planning_worker
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-planning.sh
+```
+
+Provider keys are `SecretStr` settings and are never required for canonical
+validation. Model capability declarations determine whether JSON Schema output
+is requested; local schema and policy validation remains mandatory.
+
 Every response includes `X-Request-ID`. A syntactically valid incoming value is
 preserved; otherwise one is generated. Unhandled failures return a safe JSON
 error with the same request ID.

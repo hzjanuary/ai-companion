@@ -76,6 +76,44 @@ class Settings(BaseSettings):
     context_token_budget: int = Field(default=1200, ge=64, le=32_000)
     context_message_character_limit: int = Field(default=2000, ge=64, le=20_000)
     context_max_history_age_days: int = Field(default=30, ge=1, le=365)
+    llm_enabled: bool = False
+    llm_primary_provider: Literal[
+        "openai", "gemini", "groq", "openrouter", "ollama"
+    ] = "openai"
+    llm_fallback_provider: (
+        Literal["openai", "gemini", "groq", "openrouter", "ollama"] | None
+    ) = None
+    llm_openai_model: str | None = None
+    llm_gemini_model: str | None = None
+    llm_groq_model: str | None = None
+    llm_openrouter_model: str | None = None
+    llm_ollama_model: str | None = None
+    llm_openai_base_url: str = "https://api.openai.com/v1"
+    llm_gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    llm_groq_base_url: str = "https://api.groq.com/openai/v1"
+    llm_openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_ollama_base_url: str = "http://127.0.0.1:11434"
+    llm_openai_api_key: SecretStr | None = None
+    llm_gemini_api_key: SecretStr | None = None
+    llm_groq_api_key: SecretStr | None = None
+    llm_openrouter_api_key: SecretStr | None = None
+    llm_timeout_seconds: float = Field(default=20, gt=0, le=120)
+    llm_connect_timeout_seconds: float = Field(default=5, gt=0, le=30)
+    llm_max_output_tokens: int = Field(default=300, ge=32, le=4096)
+    llm_temperature: float = Field(default=0.4, ge=0, le=2)
+    llm_max_transport_attempts: int = Field(default=2, ge=1, le=5)
+    llm_max_correction_attempts: int = Field(default=1, ge=0, le=1)
+    llm_retry_min_delay_seconds: float = Field(default=0.25, gt=0, le=30)
+    llm_retry_max_delay_seconds: float = Field(default=2, gt=0, le=120)
+    planning_job_batch_size: int = Field(default=10, ge=1, le=100)
+    planning_job_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
+    planning_job_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    prompt_version: str = Field(default="spec-006-v1", min_length=1, max_length=64)
+    response_plan_schema_version: str = Field(
+        default="response-plan-v1", min_length=1, max_length=64
+    )
+    response_plan_text_limit: int = Field(default=500, ge=1, le=4000)
+    llm_live_verification_enabled: bool = False
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -93,6 +131,20 @@ class Settings(BaseSettings):
         url = urlparse(value)
         if url.scheme not in {"http", "https"} or not url.netloc:
             raise ValueError("telegram_api_base_url must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
+
+    @field_validator(
+        "llm_openai_base_url",
+        "llm_gemini_base_url",
+        "llm_groq_base_url",
+        "llm_openrouter_base_url",
+        "llm_ollama_base_url",
+    )
+    @classmethod
+    def validate_llm_base_url(cls, value: str) -> str:
+        url = urlparse(value)
+        if url.scheme not in {"http", "https"} or not url.netloc:
+            raise ValueError("LLM base URL must be an absolute HTTP(S) URL")
         return value.rstrip("/")
 
     @field_validator(
@@ -160,6 +212,26 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "telegram_webhook_public_base_url is required for webhook delivery"
                 )
+        if self.llm_retry_min_delay_seconds > self.llm_retry_max_delay_seconds:
+            raise ValueError("LLM retry minimum delay cannot exceed maximum delay")
+        if self.llm_fallback_provider == self.llm_primary_provider:
+            raise ValueError("LLM fallback provider must differ from primary provider")
+        if self.llm_enabled:
+            for provider in filter(
+                None, (self.llm_primary_provider, self.llm_fallback_provider)
+            ):
+                model = getattr(self, f"llm_{provider}_model")
+                if not model:
+                    raise ValueError(
+                        f"llm_{provider}_model is required when LLM is enabled"
+                    )
+                if (
+                    provider != "ollama"
+                    and getattr(self, f"llm_{provider}_api_key") is None
+                ):
+                    raise ValueError(
+                        f"llm_{provider}_api_key is required when LLM is enabled"
+                    )
         return self
 
     @property

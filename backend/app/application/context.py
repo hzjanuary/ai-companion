@@ -11,6 +11,7 @@ from app.application.conversation import TokenEstimator
 class ContextMessage:
     id: UUID
     conversation_id: UUID
+    participant_id: UUID | None
     platform_thread_id: str | None
     text: str | None
     sent_at: datetime

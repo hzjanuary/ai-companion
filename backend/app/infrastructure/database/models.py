@@ -40,6 +40,15 @@ from app.domain.persistence import (
     PlatformConnectionStatus,
     ResponseMode,
 )
+from app.domain.planning import (
+    GenerationAttemptKind,
+    GenerationAttemptStatus,
+    PlanningJobStatus,
+    PlanReasonCode,
+    ProviderErrorCategory,
+    ProviderId,
+    StickerIntent,
+)
 from app.infrastructure.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -318,3 +327,106 @@ class ConversationProcessingRecordModel(UUIDPrimaryKeyMixin, TimestampMixin, Bas
         string_enum(EligibilityReason, "processing_eligibility_reason")
     )
     permanent_error: Mapped[str | None] = mapped_column(String(64))
+
+
+class ResponsePlanningJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "response_planning_jobs"
+    __table_args__ = (
+        UniqueConstraint("conversation_processing_record_id"),
+        Index(
+            "ix_response_planning_jobs_claim", "status", "available_at", "created_at"
+        ),
+        Index("ix_response_planning_jobs_lease", "status", "lease_expires_at"),
+    )
+
+    conversation_processing_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversation_processing_records.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[PlanningJobStatus] = mapped_column(
+        string_enum(PlanningJobStatus, "response_planning_job_status"),
+        default=PlanningJobStatus.PENDING,
+        nullable=False,
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    selected_provider: Mapped[ProviderId | None] = mapped_column(
+        string_enum(ProviderId, "response_planning_provider")
+    )
+    selected_model: Mapped[str | None] = mapped_column(String(255))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_category: Mapped[ProviderErrorCategory | None] = mapped_column(
+        string_enum(ProviderErrorCategory, "response_planning_error_category")
+    )
+
+
+class ModelGenerationAttemptModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "model_generation_attempts"
+    __table_args__ = (UniqueConstraint("planning_job_id", "attempt_number"),)
+
+    planning_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("response_planning_jobs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    attempt_number: Mapped[int] = mapped_column(nullable=False)
+    provider: Mapped[ProviderId] = mapped_column(
+        string_enum(ProviderId, "generation_attempt_provider"), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    attempt_kind: Mapped[GenerationAttemptKind] = mapped_column(
+        string_enum(GenerationAttemptKind, "generation_attempt_kind"), nullable=False
+    )
+    status: Mapped[GenerationAttemptStatus] = mapped_column(
+        string_enum(GenerationAttemptStatus, "generation_attempt_status"),
+        nullable=False,
+    )
+    provider_request_id: Mapped[str | None] = mapped_column(String(255))
+    input_tokens: Mapped[int | None] = mapped_column()
+    output_tokens: Mapped[int | None] = mapped_column()
+    total_tokens: Mapped[int | None] = mapped_column()
+    latency_milliseconds: Mapped[int | None] = mapped_column()
+    error_category: Mapped[ProviderErrorCategory | None] = mapped_column(
+        string_enum(ProviderErrorCategory, "generation_attempt_error_category")
+    )
+    retryable: Mapped[bool | None] = mapped_column(Boolean)
+    diagnostic_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
+    )
+
+
+class ResponsePlanModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "response_plans"
+    __table_args__ = (UniqueConstraint("planning_job_id"),)
+
+    planning_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("response_planning_jobs.id", ondelete="RESTRICT"), nullable=False
+    )
+    should_respond: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason_code: Mapped[PlanReasonCode] = mapped_column(
+        string_enum(PlanReasonCode, "response_plan_reason_code"), nullable=False
+    )
+    text: Mapped[str | None] = mapped_column(Text)
+    reply_to_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), index=True
+    )
+    mention_participant_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    sticker_intent: Mapped[StickerIntent | None] = mapped_column(
+        string_enum(StickerIntent, "response_plan_sticker_intent")
+    )
+    confidence: Mapped[float] = mapped_column(nullable=False)
+    language: Mapped[str | None] = mapped_column(String(16))
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
