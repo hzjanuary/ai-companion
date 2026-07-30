@@ -59,11 +59,11 @@ if not s.demo_live_enabled:
     raise SystemExit('FAIL demo live mode is disabled; set JANUARY_DEMO_LIVE_ENABLED=true after review.')
 if s.telegram_delivery_mode != 'polling':
     raise SystemExit('FAIL demo requires polling mode.')
-if not s.demo_allowed_chat_ids or not s.llm_enabled or not s.outbound_delivery_enabled:
-    raise SystemExit('FAIL demo allowlist, LLM, and outbound delivery must be configured.')
+if not s.demo_allowed_chat_ids or not s.llm_enabled or not s.outbound_delivery_enabled or not s.command_worker_enabled:
+    raise SystemExit('FAIL demo allowlist, LLM, outbound delivery, and command worker must be configured.')
 if s.telegram_delivery_mode == 'webhook':
     raise SystemExit('FAIL demo polling cannot run while webhook mode is configured.')
-print('PASS configuration: polling, allowlist, LLM, and outbound delivery are enabled.')
+print('PASS configuration: polling, allowlist, LLM, outbound delivery, and command worker are enabled.')
 PY
     if ! docker compose version >/dev/null 2>&1; then
       printf '%s\n' "FAIL Docker Compose is required for the local PostgreSQL and Redis demo services." >&2
@@ -126,6 +126,7 @@ PY
     launch dispatcher "$uv_bin" run python -m app.runtime.ingress_outbox_dispatcher
     launch conversation "$uv_bin" run python -m app.runtime.conversation_worker
     launch planning "$uv_bin" run python -m app.runtime.response_planning_worker
+    launch commands "$uv_bin" run python -m app.runtime.telegram_command_worker
     launch outbound "$uv_bin" run python -m app.runtime.outbound_delivery_worker
     sleep 1
     while read -r pid name; do kill -0 "$pid" 2>/dev/null || { "$0" down; printf '%s\n' "$name exited during startup" >&2; exit 1; }; done < "$runtime_dir/pids"

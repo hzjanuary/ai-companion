@@ -74,6 +74,29 @@ def test_caption_sticker_edit_and_reply_normalize() -> None:
     assert isinstance(reply, NormalizedMessage) and reply.replies_to_assistant
 
 
+def test_command_requires_a_zero_offset_bot_command_entity() -> None:
+    normalized = normalize(
+        message(
+            text="/mode@lumi_bot mention_only",
+            entities=[{"type": "bot_command", "offset": 0, "length": 14}],
+        )
+    )
+    assert isinstance(normalized, NormalizedMessage)
+    assert normalized.command is not None
+    assert normalized.command.name == "mode"
+    assert normalized.command.arguments == "mention_only"
+
+    other_bot = normalize(
+        message(
+            text="/status@other_bot",
+            entities=[{"type": "bot_command", "offset": 0, "length": 17}],
+        )
+    )
+    assert isinstance(other_bot, NormalizedMessage) and other_bot.command is None
+    prose = normalize(message(text="/status", entities=[]))
+    assert isinstance(prose, NormalizedMessage) and prose.command is None
+
+
 def test_membership_is_conservative_and_unknown_never_gains_role() -> None:
     payload = {
         "update_id": 4_000_000_001,

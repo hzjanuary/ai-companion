@@ -85,6 +85,20 @@ class IngressOutboxStatus(StrEnum):
     PUBLISHED = "published"
 
 
+class CommandJobStatus(StrEnum):
+    PENDING = "pending"
+    LEASED = "leased"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class CommandAuthorizationOutcome(StrEnum):
+    ALLOWED = "allowed"
+    DENIED = "denied"
+    RETRYABLE_FAILURE = "retryable_failure"
+    PERMANENT_FAILURE = "permanent_failure"
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantRecord:
     id: UUID

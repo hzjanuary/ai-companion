@@ -31,6 +31,7 @@ class EligibilityReason(StrEnum):
     EDITED_MESSAGE_NO_RESPONSE = "edited_message_no_response"
     NOT_ADDRESSED_TO_ASSISTANT = "not_addressed_to_assistant"
     MEMBERSHIP_EVENT_NO_RESPONSE = "membership_event_no_response"
+    COMMAND_HANDOFF = "command_handoff"
 
 
 class ProcessingOutcome(StrEnum):
@@ -39,6 +40,15 @@ class ProcessingOutcome(StrEnum):
     MEMBERSHIP_APPLIED = "membership_applied"
     IGNORED = "ignored"
     REJECTED_MALFORMED = "rejected_malformed"
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedCommand:
+    """A Telegram-independent command recognized at the adapter boundary."""
+
+    name: str
+    arguments: str
+    addressed_to_assistant: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +92,7 @@ class NormalizedMessage:
     mentions: tuple[MentionReference, ...]
     is_edit: bool
     edited_at: datetime | None
+    command: NormalizedCommand | None = None
 
 
 @dataclass(frozen=True, slots=True)

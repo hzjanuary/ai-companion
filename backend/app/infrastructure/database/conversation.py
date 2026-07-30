@@ -15,6 +15,7 @@ from app.application.conversation import (
 from app.application.ingress import IngressQueueEvent
 from app.domain.conversation import (
     EligibilityDecision,
+    EligibilityReason,
     NormalizedMembership,
     NormalizedMessage,
     ParticipantIdentity,
@@ -36,6 +37,7 @@ from app.infrastructure.database.models import (
     ParticipantModel,
     PlatformConnectionModel,
     ResponsePlanningJobModel,
+    TelegramCommandJobModel,
 )
 from app.infrastructure.database.personality import ensure_conversation_configuration
 
@@ -169,6 +171,41 @@ class SqlAlchemyConversationProcessor:
         message, created = await self._upsert_message(
             session, conversation, participant, normalized
         )
+        if normalized.command is not None and not normalized.is_edit:
+            message.eligible = False
+            message.eligibility_reason = EligibilityReason.COMMAND_HANDOFF
+            conversation.last_platform_activity_at = normalized.sent_at
+            record = ConversationProcessingRecordModel(
+                incoming_update_id=incoming.id,
+                outcome=ProcessingOutcome.MESSAGE_CREATED,
+                conversation_id=conversation.id,
+                message_id=message.id,
+                eligible=False,
+                eligibility_reason=EligibilityReason.COMMAND_HANDOFF,
+            )
+            session.add(record)
+            await session.flush()
+            session.add(
+                TelegramCommandJobModel(
+                    conversation_processing_record_id=record.id,
+                    conversation_id=conversation.id,
+                    message_id=message.id,
+                    participant_id=participant.id,
+                    command_name=normalized.command.name,
+                    arguments=normalized.command.arguments,
+                )
+            )
+            await session.flush()
+            return ConversationProcessResult(
+                incoming_update_id=incoming.id,
+                duplicate=False,
+                outcome=record.outcome.value,
+                conversation_id=conversation.id,
+                message_id=message.id,
+                eligibility=EligibilityDecision(
+                    False, EligibilityReason.COMMAND_HANDOFF
+                ),
+            )
         decision = evaluate_eligibility(
             EligibilityInput(
                 assistant_status=assistant.status,

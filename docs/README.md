@@ -51,6 +51,10 @@ and working-memory structure around that truth; it does not install upstream
   response-plan delivery, ambiguity policy, and recovery boundary.
 - `decisions/0007-outbound-delivery-ambiguity.md`: lasting no-exactly-once
   Telegram delivery decision.
+- `product/specs/SPEC-010-telegram-administration-commands-and-user-preferences.md`:
+  deterministic Telegram command and preference behavior.
+- `decisions/0010-telegram-command-jobs-and-fresh-authorization.md`: command
+  parsing, durable handoff, and fresh authorization decision.
 
 ## Source-Repository Indexes
 

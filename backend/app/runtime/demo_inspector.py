@@ -24,6 +24,7 @@ from app.infrastructure.database.models import (
     PlatformConnectionModel,
     ResponsePlanModel,
     ResponsePlanningJobModel,
+    TelegramCommandJobModel,
 )
 
 RECOVERY_COMMAND_PREFIX = "uv run python -m app.runtime.outbound_recovery "
@@ -79,6 +80,9 @@ async def inspect_latest(
                 ),
                 "planning_jobs": await session.scalar(
                     select(func.count(ResponsePlanningJobModel.id))
+                ),
+                "command_jobs": await session.scalar(
+                    select(func.count(TelegramCommandJobModel.id))
                 ),
                 "response_plans": await session.scalar(
                     select(func.count(ResponsePlanModel.id))
@@ -185,6 +189,20 @@ async def inspect_latest(
                 if record
                 else []
             )
+            command_jobs = (
+                list(
+                    await session.scalars(
+                        select(TelegramCommandJobModel)
+                        .where(
+                            TelegramCommandJobModel.conversation_processing_record_id
+                            == record.id
+                        )
+                        .order_by(TelegramCommandJobModel.created_at)
+                    )
+                )
+                if record
+                else []
+            )
             job_ids = [job.id for job in jobs]
             attempts = (
                 list(
@@ -211,6 +229,19 @@ async def inspect_latest(
                 if job_ids
                 else []
             )
+            command_plan_ids = [job.id for job in command_jobs]
+            if command_plan_ids:
+                plans.extend(
+                    list(
+                        await session.scalars(
+                            select(ResponsePlanModel)
+                            .where(
+                                ResponsePlanModel.command_job_id.in_(command_plan_ids)
+                            )
+                            .order_by(ResponsePlanModel.created_at)
+                        )
+                    )
+                )
             plan_ids = [plan.id for plan in plans]
             actions = (
                 list(
@@ -316,6 +347,18 @@ async def inspect_latest(
                         }
                         for job in jobs
                     ],
+                    "command_jobs": [
+                        {
+                            "id": str(job.id),
+                            "name": job.command_name,
+                            "status": job.status.value,
+                            "authorization_outcome": job.authorization_outcome.value
+                            if job.authorization_outcome
+                            else None,
+                            "result_code": job.result_code,
+                        }
+                        for job in command_jobs
+                    ],
                     "generation_attempts": [
                         {
                             "id": str(attempt.id),
@@ -333,7 +376,12 @@ async def inspect_latest(
                     "response_plans": [
                         {
                             "id": str(plan.id),
-                            "planning_job_id": str(plan.planning_job_id),
+                            "planning_job_id": str(plan.planning_job_id)
+                            if plan.planning_job_id
+                            else None,
+                            "command_job_id": str(plan.command_job_id)
+                            if plan.command_job_id
+                            else None,
                             "should_respond": plan.should_respond,
                             "reason_code": plan.reason_code.value,
                             "reply_to_message_id": str(plan.reply_to_message_id)

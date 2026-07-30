@@ -88,3 +88,10 @@ provider I/O only after checking the current conversation safety projection.
 Outbound delivery similarly checks current sticker enablement immediately before
 Telegram I/O. ORM models and provider/platform clients do not enter the
 personality application module.
+
+SPEC-010 parses Telegram command entities only at the infrastructure boundary,
+then writes a durable command job before ordinary model eligibility. A dedicated
+command runtime performs fresh group authorization through the platform port and
+creates the same response-plan/outbound-action handoff used by model work.
+Command jobs, response plans, and delivery remain independently scalable
+runtime processes; command parsing and grammar do not import provider clients.

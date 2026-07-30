@@ -136,6 +136,12 @@ Out of scope:
 
 ## Validation
 
+- 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
+  without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected
+  no-network tests, Ruff lint and format checks, strict mypy, Harness status
+  and doctor, and `git diff --check`. `scripts/test-resolve-uv.sh` passed its
+  PATH-preference, repository-local fallback, and missing-tool checks. `docker
+  build --tag january-backend:spec-001 .` and `docker compose config` passed.
 - Focused proof: `pytest` passed 10 tests covering settings, OpenAPI, all
   operational endpoints, request IDs, request-local state, safe errors, and
   normal HTTP errors.
@@ -212,5 +218,19 @@ Out of scope:
 
 ## Result
 
-SPEC-001 through SPEC-007 are implemented. This plan remains active for the
+SPEC-001 through SPEC-009 are implemented. SPEC-010 command parsing, durable
+job handoff, response-plan XOR, preference-event schema, separate command
+worker, demo lifecycle wiring, and a PostgreSQL/Redis command validator are in
+progress. Current evidence: `validate.sh` passed 118 selected no-network tests;
+the command validator now passes 30 parser/grammar tests and 14 PostgreSQL/Redis
+proofs for durable ingress handoff, authorization allow/deny and retry recovery,
+private preference and configuration isolation, replay prevention, accepted
+outbound delivery, `/resume` restoration/no-op, authorization-time configuration
+conflict/no-op handling, atomic preference no-op detection, and Assistant-scoped
+personality resolution, and worker-level profile/sticker mutations, no-ops, and
+unavailable-mapping rejection, and bounded `/personality list` output.
+`validate-db.sh`, ingress,
+conversation, planning, delivery, demo, and personality validators also passed
+locally; migration `0007_telegram_commands` upgraded, downgraded, and
+re-upgraded. This plan remains active for the
 Telegram MVP; later product behavior remains unimplemented.

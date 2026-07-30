@@ -33,6 +33,8 @@ from app.domain.outbound import (
 )
 from app.domain.persistence import (
     AssistantStatus,
+    CommandAuthorizationOutcome,
+    CommandJobStatus,
     ConversationStatus,
     ConversationType,
     IncomingUpdateStatus,
@@ -480,6 +482,64 @@ class ResponsePlanningJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class TelegramCommandJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "telegram_command_jobs"
+    __table_args__ = (
+        UniqueConstraint("conversation_processing_record_id"),
+        Index("ix_telegram_command_jobs_claim", "status", "available_at", "created_at"),
+        Index("ix_telegram_command_jobs_lease", "status", "lease_expires_at"),
+    )
+
+    conversation_processing_record_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversation_processing_records.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    participant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    command_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    arguments: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    status: Mapped[CommandJobStatus] = mapped_column(
+        string_enum(CommandJobStatus, "telegram_command_job_status"),
+        default=CommandJobStatus.PENDING,
+        nullable=False,
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authorization_outcome: Mapped[CommandAuthorizationOutcome | None] = mapped_column(
+        string_enum(CommandAuthorizationOutcome, "command_authorization_outcome")
+    )
+    result_code: Mapped[str | None] = mapped_column(String(64))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ParticipantPreferenceEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "participant_preference_events"
+    __table_args__ = (UniqueConstraint("command_job_id"),)
+
+    participant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    command_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("telegram_command_jobs.id", ondelete="RESTRICT"), nullable=False
+    )
+    previous_mention_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    mention_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    previous_teasing_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    teasing_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class ModelGenerationAttemptModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "model_generation_attempts"
     __table_args__ = (UniqueConstraint("planning_job_id", "attempt_number"),)
@@ -517,10 +577,16 @@ class ModelGenerationAttemptModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class ResponsePlanModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "response_plans"
-    __table_args__ = (UniqueConstraint("planning_job_id"),)
+    __table_args__ = (
+        UniqueConstraint("planning_job_id"),
+        UniqueConstraint("command_job_id"),
+    )
 
-    planning_job_id: Mapped[UUID] = mapped_column(
-        ForeignKey("response_planning_jobs.id", ondelete="RESTRICT"), nullable=False
+    planning_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("response_planning_jobs.id", ondelete="RESTRICT")
+    )
+    command_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("telegram_command_jobs.id", ondelete="RESTRICT")
     )
     should_respond: Mapped[bool] = mapped_column(Boolean, nullable=False)
     reason_code: Mapped[PlanReasonCode] = mapped_column(

@@ -67,7 +67,12 @@ async def process_event(
             platform_connection_id=connection.id,
             assistant_platform_user_id=connection.external_bot_id,
             assistant_display_name=assistant.name,
-            assistant_username=None,
+            assistant_username=(
+                connection.configuration.get("username")
+                if isinstance(connection.configuration.get("username"), str)
+                else None
+            ),
+            command_argument_limit=settings.command_max_argument_length,
         )
     except (TelegramNormalizationError, ValueError):
         await processor.reject_malformed(event)

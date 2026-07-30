@@ -13,6 +13,10 @@ from app.domain.conversation import (
     ParticipantIdentity,
 )
 from app.domain.persistence import ConversationType, ParticipantRole, Platform
+from app.infrastructure.telegram.commands import (
+    TelegramCommandParseError,
+    parse_command,
+)
 from app.infrastructure.telegram.updates import TelegramUpdate
 
 
@@ -27,6 +31,7 @@ def normalize_telegram_update(
     assistant_platform_user_id: str,
     assistant_display_name: str,
     assistant_username: str | None,
+    command_argument_limit: int = 160,
 ) -> NormalizedMessage | NormalizedMembership:
     if update.update_type in {"message", "edited_message"}:
         payload = _object(update.raw_payload, update.update_type)
@@ -35,6 +40,7 @@ def normalize_telegram_update(
             platform_connection_id=platform_connection_id,
             assistant_platform_user_id=assistant_platform_user_id,
             assistant_username=assistant_username,
+            command_argument_limit=command_argument_limit,
             is_edit=update.update_type == "edited_message",
         )
     if update.update_type in {"chat_member", "my_chat_member"}:
@@ -53,6 +59,7 @@ def _message(
     platform_connection_id: UUID,
     assistant_platform_user_id: str,
     assistant_username: str | None,
+    command_argument_limit: int,
     is_edit: bool,
 ) -> NormalizedMessage:
     conversation = _conversation(payload, platform_connection_id)
@@ -73,7 +80,9 @@ def _message(
             replies_to_assistant = (
                 _identifier(reply_sender, "id") == assistant_platform_user_id
             )
-    entities = payload.get("entities") or payload.get("caption_entities") or []
+    entities = payload.get("entities") if message_type == "text" else []
+    if entities is None:
+        entities = []
     mentions = _mentions(entities, text, assistant_platform_user_id)
     mentions_assistant = any(
         reference.platform_user_id == assistant_platform_user_id
@@ -85,6 +94,16 @@ def _message(
         for reference in mentions
     )
     thread_id = _optional_identifier(payload, "message_thread_id")
+    try:
+        command = (
+            parse_command(text, entities, assistant_username, command_argument_limit)
+            if message_type == "text"
+            else None
+        )
+    except TelegramCommandParseError as error:
+        raise TelegramNormalizationError(
+            "Telegram command entity is invalid"
+        ) from error
     return NormalizedMessage(
         conversation=conversation,
         sender=sender,
@@ -99,6 +118,7 @@ def _message(
         mentions=mentions,
         is_edit=is_edit,
         edited_at=date if is_edit else None,
+        command=command,
     )
 
 

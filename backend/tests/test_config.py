@@ -17,6 +17,22 @@ def test_settings_defaults() -> None:
     assert settings.context_recent_message_limit == 20
     assert settings.llm_enabled is False
     assert settings.outbound_delivery_enabled is False
+    assert settings.command_worker_enabled is False
+
+
+def test_command_settings_validate_retry_bounds_and_limits() -> None:
+    settings = Settings(_env_file=None, command_max_argument_length=160)
+    assert settings.command_max_argument_length == 160
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            command_retry_min_delay_seconds=10,
+            command_retry_max_delay_seconds=1,
+        )
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, command_max_authorization_attempts=0)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, command_max_argument_length=161)
 
 
 def test_llm_settings_require_remote_credentials_and_allow_keyless_ollama() -> None:

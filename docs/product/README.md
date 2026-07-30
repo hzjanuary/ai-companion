@@ -25,6 +25,7 @@ contract, implementation, and executable tests.
 - [SPEC-007 Outbound Actions, Delivery, and Idempotency](specs/SPEC-007-outbound-actions-delivery-idempotency.md)
 - [SPEC-008 Operator Bootstrap and End-to-End Demo](specs/SPEC-008-operator-bootstrap-end-to-end-demo.md)
 - [SPEC-009 Personality Profiles and Group Configuration](specs/SPEC-009-personality-profiles-and-group-configuration.md)
+- [SPEC-010 Telegram Administration Commands and User Preferences](specs/SPEC-010-telegram-administration-commands-and-user-preferences.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule

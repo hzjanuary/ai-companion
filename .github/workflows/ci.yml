@@ -81,3 +81,8 @@ jobs:
           JANUARY_ENVIRONMENT: test
           JANUARY_DATABASE_HOST: 127.0.0.1
           JANUARY_REDIS_URL: redis://127.0.0.1:6379/0
+      - run: uv run pytest backend/tests/test_telegram_commands.py && uv run pytest -m command_integration
+        env:
+          JANUARY_ENVIRONMENT: test
+          JANUARY_DATABASE_HOST: 127.0.0.1
+          JANUARY_REDIS_URL: redis://127.0.0.1:6379/0

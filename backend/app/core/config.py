@@ -111,6 +111,18 @@ class Settings(BaseSettings):
     planning_owner_name: str = Field(default="planning", min_length=1, max_length=255)
     planning_job_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
     planning_job_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    command_worker_enabled: bool = False
+    command_owner_name: str = Field(default="commands", min_length=1, max_length=255)
+    command_batch_size: int = Field(default=10, ge=1, le=100)
+    command_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
+    command_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    command_max_authorization_attempts: int = Field(default=3, ge=1, le=10)
+    command_retry_min_delay_seconds: float = Field(default=1, gt=0, le=300)
+    command_retry_max_delay_seconds: float = Field(default=60, gt=0, le=3600)
+    command_max_argument_length: int = Field(default=160, ge=0, le=160)
+    command_max_profiles_shown: int = Field(default=8, ge=1, le=20)
+    command_ambient_selective_enabled: bool = False
+    command_menu_live_management_enabled: bool = False
     prompt_version: str = Field(default="spec-006-v1", min_length=1, max_length=64)
     response_plan_schema_version: str = Field(
         default="response-plan-v1", min_length=1, max_length=64
@@ -271,6 +283,8 @@ class Settings(BaseSettings):
                 )
         if self.llm_retry_min_delay_seconds > self.llm_retry_max_delay_seconds:
             raise ValueError("LLM retry minimum delay cannot exceed maximum delay")
+        if self.command_retry_min_delay_seconds > self.command_retry_max_delay_seconds:
+            raise ValueError("command retry minimum delay cannot exceed maximum delay")
         if self.llm_fallback_provider == self.llm_primary_provider:
             raise ValueError("LLM fallback provider must differ from primary provider")
         if self.llm_enabled:
