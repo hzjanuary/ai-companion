@@ -160,6 +160,26 @@ def test_authorization_retry_delay_is_exponential_and_bounded() -> None:
     assert _authorization_retry_delay(settings, 3) == 5
 
 
+@pytest.mark.parametrize(
+    ("name", "arguments", "action"),
+    [
+        ("memory", "", "summary"),
+        ("memory", "list", "list"),
+        ("memory", "remember a fact", "remember"),
+        ("memory", "reset_group confirm", "reset_group"),
+        ("forget", "Abc12345", "forget"),
+        ("forget_me", "", "warning"),
+        ("forget_me", "confirm", "confirm"),
+    ],
+)
+def test_memory_command_grammar_is_exact(
+    name: str, arguments: str, action: str
+) -> None:
+    result = parse_command(name, arguments)
+    assert result.operation == CommandOperation.MEMORY
+    assert result.action == action
+
+
 def test_ambient_and_sticker_configuration_gates_are_deterministic() -> None:
     participant = ParticipantModel(
         conversation_id=uuid4(), platform_user_id="test-user", display_name="Test"

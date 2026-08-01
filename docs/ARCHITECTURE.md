@@ -95,3 +95,12 @@ command runtime performs fresh group authorization through the platform port and
 creates the same response-plan/outbound-action handoff used by model work.
 Command jobs, response plans, and delivery remain independently scalable
 runtime processes; command parsing and grammar do not import provider clients.
+
+SPEC-011 keeps explicit-memory contracts in `application`, while PostgreSQL
+owns scoped memory rows, content-free events, physical redaction, and retention
+batching. Context includes only active records belonging to the exact
+Assistant, platform connection, and conversation; memory enters provider input
+only as JSON-delimited untrusted data. Privacy and memory mutations advance a
+durable conversation revision that planning rechecks immediately before
+provider I/O. The retention runtime owns no Telegram, Redis, or provider client
+and is separate from API startup.

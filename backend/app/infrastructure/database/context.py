@@ -3,13 +3,25 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.application.context import ContextMessage, ConversationContext, build_context
+from app.application.context import (
+    ContextMemory,
+    ContextMessage,
+    ConversationContext,
+    build_context,
+)
 from app.application.conversation import CharacterTokenEstimator
 from app.core.config import Settings
-from app.infrastructure.database.models import MessageModel, ParticipantModel
+from app.domain.persistence import MemoryStatus, MemoryVisibility
+from app.infrastructure.database.models import (
+    ConversationModel,
+    MemoryItemModel,
+    MessageModel,
+    ParticipantModel,
+    PlatformConnectionModel,
+)
 
 
 class SqlAlchemyConversationContextReader:
@@ -49,6 +61,41 @@ class SqlAlchemyConversationContextReader:
             candidates = tuple(
                 self._to_context(message, participant) for message, participant in rows
             )
+            memory_rows = await session.execute(
+                select(MemoryItemModel, ParticipantModel)
+                .join(
+                    ConversationModel,
+                    ConversationModel.id == MemoryItemModel.conversation_id,
+                )
+                .join(
+                    PlatformConnectionModel,
+                    PlatformConnectionModel.id
+                    == ConversationModel.platform_connection_id,
+                )
+                .outerjoin(
+                    ParticipantModel,
+                    ParticipantModel.id == MemoryItemModel.creator_participant_id,
+                )
+                .where(
+                    MemoryItemModel.conversation_id == current.conversation_id,
+                    MemoryItemModel.platform_connection_id
+                    == ConversationModel.platform_connection_id,
+                    MemoryItemModel.assistant_id
+                    == PlatformConnectionModel.assistant_id,
+                    MemoryItemModel.status == MemoryStatus.ACTIVE,
+                    MemoryItemModel.visibility == MemoryVisibility.SAME_CONVERSATION,
+                    or_(
+                        MemoryItemModel.expires_at.is_(None),
+                        MemoryItemModel.expires_at > current_time,
+                    ),
+                )
+                .order_by(MemoryItemModel.created_at, MemoryItemModel.id)
+                .limit(self._settings.memory_context_limit)
+            )
+            memories = tuple(
+                self._to_memory(memory, participant)
+                for memory, participant in memory_rows
+            )
         return build_context(
             current=current,
             candidates=candidates,
@@ -59,6 +106,8 @@ class SqlAlchemyConversationContextReader:
             character_limit=self._settings.context_message_character_limit,
             max_age_days=self._settings.context_max_history_age_days,
             estimator=CharacterTokenEstimator(),
+            explicit_memories=memories,
+            memory_character_budget=self._settings.memory_context_character_budget,
         )
 
     async def _load_message(
@@ -89,4 +138,19 @@ class SqlAlchemyConversationContextReader:
             sender_display_name=participant.display_name if participant else "Unknown",
             mention_allowed=participant.mention_allowed if participant else False,
             teasing_allowed=participant.teasing_allowed if participant else False,
+        )
+
+    @staticmethod
+    def _to_memory(
+        memory: MemoryItemModel, participant: ParticipantModel | None
+    ) -> ContextMemory:
+        return ContextMemory(
+            public_id=memory.public_id,
+            content=memory.content or "",
+            created_at=memory.created_at,
+            creator_label=(
+                "Deleted user"
+                if participant is None or participant.privacy_deleted_at is not None
+                else participant.display_name
+            ),
         )

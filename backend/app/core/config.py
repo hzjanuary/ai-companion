@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     context_token_budget: int = Field(default=1200, ge=64, le=32_000)
     context_message_character_limit: int = Field(default=2000, ge=64, le=20_000)
     context_max_history_age_days: int = Field(default=30, ge=1, le=365)
+    memory_context_limit: int = Field(default=10, ge=1, le=10)
+    memory_context_character_budget: int = Field(default=1200, ge=1, le=10_000)
+    raw_content_retention_days: int = Field(default=30, ge=1, le=30)
+    retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    retention_worker_enabled: bool = False
+    retention_worker_poll_interval_seconds: float = Field(default=60, gt=0, le=3600)
     llm_enabled: bool = False
     llm_primary_provider: Literal[
         "openai", "gemini", "groq", "openrouter", "ollama"
@@ -119,7 +125,7 @@ class Settings(BaseSettings):
     command_max_authorization_attempts: int = Field(default=3, ge=1, le=10)
     command_retry_min_delay_seconds: float = Field(default=1, gt=0, le=300)
     command_retry_max_delay_seconds: float = Field(default=60, gt=0, le=3600)
-    command_max_argument_length: int = Field(default=160, ge=0, le=160)
+    command_max_argument_length: int = Field(default=500, ge=0, le=500)
     command_max_profiles_shown: int = Field(default=8, ge=1, le=20)
     command_ambient_selective_enabled: bool = False
     command_menu_live_management_enabled: bool = False

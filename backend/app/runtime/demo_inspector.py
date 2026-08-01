@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from app.core.config import Settings
+from app.domain.persistence import MemoryStatus
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
     ConversationConfigurationRevisionModel,
@@ -15,6 +16,8 @@ from app.infrastructure.database.models import (
     ConversationProcessingRecordModel,
     IncomingPlatformUpdateModel,
     IngressOutboxEventModel,
+    MemoryEventModel,
+    MemoryItemModel,
     MessageModel,
     ModelGenerationAttemptModel,
     OutboundActionModel,
@@ -158,6 +161,47 @@ async def inspect_latest(
                         "stickers_enabled": revision.stickers_enabled,
                     }
             summary["personality_configuration"] = configuration_summary
+            memory_query = select(MemoryItemModel).order_by(
+                MemoryItemModel.created_at.desc(), MemoryItemModel.id
+            )
+            if conversation_id is not None:
+                memory_query = memory_query.where(
+                    MemoryItemModel.conversation_id == conversation_id
+                )
+            memory_items = list(await session.scalars(memory_query.limit(20)))
+            memory_events = list(
+                await session.scalars(
+                    select(MemoryEventModel)
+                    .order_by(MemoryEventModel.created_at.desc(), MemoryEventModel.id)
+                    .limit(20)
+                )
+            )
+            summary["memory_privacy"] = {
+                "active_memory_count": await session.scalar(
+                    select(func.count(MemoryItemModel.id)).where(
+                        MemoryItemModel.status == MemoryStatus.ACTIVE
+                    )
+                ),
+                "memory_items": [
+                    {
+                        "public_id": item.public_id,
+                        "kind": item.kind.value,
+                        "scope": item.scope.value,
+                        "visibility": item.visibility.value,
+                        "status": item.status.value,
+                        "created_at": item.created_at.isoformat(),
+                        "deleted_at": item.deleted_at.isoformat()
+                        if item.deleted_at
+                        else None,
+                        "expires_at": item.expires_at.isoformat()
+                        if item.expires_at
+                        else None,
+                        "content_retained": item.content is not None,
+                    }
+                    for item in memory_items
+                ],
+                "latest_event_codes": [event.action_code for event in memory_events],
+            }
             if update is None:
                 return {"latest_update": None, **summary}
             record = await session.scalar(

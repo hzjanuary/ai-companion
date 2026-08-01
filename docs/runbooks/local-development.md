@@ -175,6 +175,22 @@ JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 \
   ./scripts/validate-personality.sh
 ```
 
+For SPEC-011 explicit-memory, privacy, and retention schema proof, run:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 \
+  ./scripts/validate-memory.sh
+```
+
+It uses only project PostgreSQL/Redis and synthetic values, upgrades through
+`0008_memory_privacy_retention`, tests the schema, downgrades to
+`0007_telegram_commands`, then re-upgrades. To run one bounded raw-content
+retention pass outside validation, enable the dedicated no-network worker:
+
+```bash
+JANUARY_RETENTION_WORKER_ENABLED=true uv run python -m app.runtime.retention_worker --once
+```
+
 ## Guarded Telegram Demo
 
 The optional polling-only dedicated-bot workflow is documented in

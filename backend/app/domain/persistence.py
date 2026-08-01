@@ -99,6 +99,33 @@ class CommandAuthorizationOutcome(StrEnum):
     PERMANENT_FAILURE = "permanent_failure"
 
 
+class MemoryKind(StrEnum):
+    EXPLICIT_FACT = "explicit_fact"
+
+
+class MemoryScope(StrEnum):
+    PRIVATE_CONVERSATION = "private_conversation"
+    GROUP_CONVERSATION = "group_conversation"
+
+
+class MemoryVisibility(StrEnum):
+    SAME_CONVERSATION = "same_conversation"
+
+
+class MemoryStatus(StrEnum):
+    ACTIVE = "active"
+    DELETED = "deleted"
+    EXPIRED = "expired"
+
+
+class MemoryDeletionReason(StrEnum):
+    USER_REQUEST = "user_request"
+    CREATOR_REQUEST = "creator_request"
+    ADMINISTRATOR_RESET = "administrator_reset"
+    PROFILE_DELETION = "profile_deletion"
+    EXPIRATION = "expiration"
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantRecord:
     id: UUID

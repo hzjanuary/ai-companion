@@ -63,6 +63,16 @@ async def consume_once(
     try:
         for action in actions:
             try:
+                if action.payload_redacted_at is not None:
+                    await repository.finalize(
+                        action.id,
+                        owner,
+                        OutboundActionStatus.SKIPPED,
+                        DeliveryAttemptStatus.REJECTED,
+                        DeliveryCertainty.NOT_SENT,
+                        error_category="payload_redacted",
+                    )
+                    continue
                 resolved = await _resolve(database, action.conversation_id, action)
                 if resolved is None:
                     await repository.finalize(

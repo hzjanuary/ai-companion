@@ -22,10 +22,21 @@ class ContextMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class ContextMemory:
+    """An explicitly stored fact safe to include as untrusted model context."""
+
+    public_id: str
+    content: str
+    created_at: datetime
+    creator_label: str
+
+
+@dataclass(frozen=True, slots=True)
 class ConversationContext:
     current: ContextMessage
     reply_chain: tuple[ContextMessage, ...]
     recent_history: tuple[ContextMessage, ...]
+    explicit_memories: tuple[ContextMemory, ...] = ()
 
 
 def build_context(
@@ -39,6 +50,8 @@ def build_context(
     character_limit: int,
     max_age_days: int,
     estimator: TokenEstimator,
+    explicit_memories: tuple[ContextMemory, ...] = (),
+    memory_character_budget: int = 1200,
 ) -> ConversationContext:
     """Select current, reply ancestors, then newest eligible history under budget."""
 
@@ -79,7 +92,10 @@ def build_context(
         history.append(candidate)
         used += cost
     return ConversationContext(
-        current=current, reply_chain=tuple(chain), recent_history=tuple(history)
+        current=current,
+        reply_chain=tuple(chain),
+        recent_history=tuple(history),
+        explicit_memories=_select_memories(explicit_memories, memory_character_budget),
     )
 
 
@@ -87,3 +103,21 @@ def _cost(
     message: ContextMessage, character_limit: int, estimator: TokenEstimator
 ) -> int:
     return estimator.estimate((message.text or "")[:character_limit])
+
+
+def _select_memories(
+    memories: tuple[ContextMemory, ...], character_budget: int
+) -> tuple[ContextMemory, ...]:
+    """Keep a deterministic bounded prefix without consuming message-token budget."""
+
+    selected: list[ContextMemory] = []
+    used = 0
+    for memory in sorted(memories, key=lambda item: (item.created_at, item.public_id)):
+        if not memory.content:
+            continue
+        cost = len(memory.content)
+        if used + cost > character_budget:
+            continue
+        selected.append(memory)
+        used += cost
+    return tuple(selected)

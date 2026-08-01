@@ -14,6 +14,7 @@ class CommandOperation(StrEnum):
     READ = "read"
     CONFIGURATION = "configuration"
     PREFERENCE = "preference"
+    MEMORY = "memory"
     UNKNOWN = "unknown"
     USAGE = "usage"
 
@@ -28,6 +29,7 @@ class CommandRequest:
 
 _PROFILE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:@[1-9][0-9]*)?$")
 _MODES = {"mention_only", "mention_and_name", "ambient_selective"}
+_MEMORY_PUBLIC_ID = re.compile(r"^[A-Za-z0-9]{8,24}$")
 
 
 def parse_command(name: str, arguments: str) -> CommandRequest:
@@ -70,6 +72,31 @@ def parse_command(name: str, arguments: str) -> CommandRequest:
             )
             return CommandRequest(name, operation, "set", arguments == "on")
         return _usage(name)
+    if name == "memory":
+        if not arguments:
+            return CommandRequest(name, CommandOperation.MEMORY, "summary")
+        if arguments == "list":
+            return CommandRequest(name, CommandOperation.MEMORY, "list")
+        if arguments == "reset_group confirm":
+            return CommandRequest(name, CommandOperation.MEMORY, "reset_group")
+        prefix, separator, content = arguments.partition(" ")
+        if prefix == "remember" and separator and content:
+            return CommandRequest(name, CommandOperation.MEMORY, "remember", content)
+        return _usage(name)
+    if name == "forget":
+        return (
+            CommandRequest(name, CommandOperation.MEMORY, "forget", arguments)
+            if _MEMORY_PUBLIC_ID.fullmatch(arguments)
+            else _usage(name)
+        )
+    if name == "forget_me":
+        if not arguments:
+            return CommandRequest(name, CommandOperation.MEMORY, "warning")
+        return (
+            CommandRequest(name, CommandOperation.MEMORY, "confirm")
+            if arguments == "confirm"
+            else _usage(name)
+        )
     return CommandRequest(name, CommandOperation.UNKNOWN)
 
 
@@ -129,6 +156,39 @@ def command_response(
         "profile_not_owned": (
             "Tinh cach nay khong dung cho January nay.",
             "That personality is not available to this January instance.",
+        ),
+        "memory_summary": (
+            "Bo nho chi luu khi ban dung /memory remember. "
+            "Pham vi: cuoc tro chuyen nay.",
+            "Memory is saved only with /memory remember and stays "
+            "in this conversation.",
+        ),
+        "memory_saved": ("Da luu bo nho.", "Memory saved."),
+        "memory_deleted": ("Da xoa bo nho.", "Memory deleted."),
+        "memory_missing": (
+            "Khong tim thay bo nho dang hoat dong.",
+            "No active memory found.",
+        ),
+        "memory_reset": ("Da xoa bo nho cua nhom.", "Group memories cleared."),
+        "memory_private_reset": (
+            "Lenh nay chi dung trong nhom.",
+            "This command is available only in groups.",
+        ),
+        "forget_me_warning": (
+            "Xac nhan bang /forget_me confirm. January se xoa/an danh hoa ho so va "
+            "noi dung cua ban tai ket noi nay; tin da gui va yeu cau nha cung cap "
+            "khong the thu hoi.",
+            "Confirm with /forget_me confirm. January will erase/anonymize your "
+            "profile and authored content for this connection; delivered messages "
+            "and provider requests cannot be retracted.",
+        ),
+        "forget_me_done": (
+            "Da xu ly yeu cau xoa du lieu.",
+            "Your deletion request has been processed.",
+        ),
+        "forget_me_unchanged": (
+            "Yeu cau xoa du lieu da duoc xu ly truoc do.",
+            "Your deletion request was already processed.",
         ),
     }
     base = templates.get(code, templates["safe_failure"])[1 if english else 0]

@@ -9,7 +9,11 @@ export JANUARY_ENVIRONMENT=test JANUARY_DATABASE_HOST=127.0.0.1
 export JANUARY_DATABASE_PORT="${JANUARY_DB_HOST_PORT:-5432}"
 export JANUARY_REDIS_URL="redis://127.0.0.1:${JANUARY_REDIS_HOST_PORT:-6379}/0"
 
-"$project_root/scripts/validate-db.sh"
+if ! docker compose version >/dev/null 2>&1; then
+  printf '%s\n' "Docker Compose is required for memory/privacy integration validation." >&2
+  exit 1
+fi
+
 cleanup() { docker compose stop database redis >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 docker compose up --detach database redis
@@ -20,11 +24,10 @@ for _ in $(seq 1 30); do
   fi
   sleep 1
 done
-if ! docker compose exec -T database pg_isready -U january -d january >/dev/null \
-  || ! docker compose exec -T redis redis-cli ping >/dev/null 2>&1; then
-  printf '%s\n' "PostgreSQL or Redis did not become ready." >&2
-  exit 1
-fi
+docker compose exec -T database pg_isready -U january -d january >/dev/null
+docker compose exec -T redis redis-cli ping >/dev/null
 "$uv_bin" run alembic upgrade head
-"$uv_bin" run pytest backend/tests/test_personality.py
-"$uv_bin" run pytest -m 'planning_integration or personality_integration'
+"$uv_bin" run pytest backend/tests/test_memory.py backend/tests/test_conversation_context.py
+"$uv_bin" run pytest -m memory_integration
+"$uv_bin" run alembic downgrade 0007_telegram_commands
+"$uv_bin" run alembic upgrade head

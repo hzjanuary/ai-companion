@@ -105,6 +105,26 @@ class SqlAlchemyPlanningRepository:
                     )
                 )
 
+    async def release_for_context_change(self, job_id: UUID, owner: str) -> bool:
+        """Release a lease when privacy/memory changed before provider I/O."""
+
+        async with self._session_factory() as session:
+            async with session.begin():
+                job = await session.get(
+                    ResponsePlanningJobModel, job_id, with_for_update=True
+                )
+                if (
+                    job is None
+                    or job.status != PlanningJobStatus.LEASED
+                    or job.lease_owner != owner
+                ):
+                    return False
+                job.status = PlanningJobStatus.PENDING
+                job.available_at = datetime.now(UTC)
+                job.lease_owner = None
+                job.lease_expires_at = None
+                return True
+
     async def complete(
         self,
         job_id: UUID,

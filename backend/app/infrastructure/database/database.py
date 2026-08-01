@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0007_telegram_commands"
+                        and revision == "0008_memory_privacy_retention"
                     )
         except Exception:
             return False

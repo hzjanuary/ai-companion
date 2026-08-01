@@ -18,11 +18,13 @@ def test_settings_defaults() -> None:
     assert settings.llm_enabled is False
     assert settings.outbound_delivery_enabled is False
     assert settings.command_worker_enabled is False
+    assert settings.raw_content_retention_days == 30
+    assert settings.retention_worker_enabled is False
 
 
 def test_command_settings_validate_retry_bounds_and_limits() -> None:
-    settings = Settings(_env_file=None, command_max_argument_length=160)
-    assert settings.command_max_argument_length == 160
+    settings = Settings(_env_file=None, command_max_argument_length=500)
+    assert settings.command_max_argument_length == 500
     with pytest.raises(ValidationError):
         Settings(
             _env_file=None,
@@ -32,7 +34,7 @@ def test_command_settings_validate_retry_bounds_and_limits() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, command_max_authorization_attempts=0)
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, command_max_argument_length=161)
+        Settings(_env_file=None, command_max_argument_length=501)
 
 
 def test_llm_settings_require_remote_credentials_and_allow_keyless_ollama() -> None:
@@ -151,6 +153,24 @@ def test_invalid_ingress_settings_are_rejected(
     ],
 )
 def test_invalid_context_settings_are_rejected(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("JANUARY_MEMORY_CONTEXT_LIMIT", "11"),
+        ("JANUARY_MEMORY_CONTEXT_CHARACTER_BUDGET", "0"),
+        ("JANUARY_RAW_CONTENT_RETENTION_DAYS", "31"),
+        ("JANUARY_RETENTION_BATCH_SIZE", "0"),
+        ("JANUARY_RETENTION_WORKER_POLL_INTERVAL_SECONDS", "0"),
+    ],
+)
+def test_invalid_memory_and_retention_settings_are_rejected(
     monkeypatch: pytest.MonkeyPatch, name: str, value: str
 ) -> None:
     monkeypatch.setenv(name, value)

@@ -106,6 +106,13 @@ Out of scope:
   stale sticker suppression. `january-backend:spec-009` built; after applying
   `0006` to an isolated Compose PostgreSQL instance on port 5434, `/`,
   `/health`, `/live`, `/ready`, and `/docs` returned HTTP 200 on port 8009.
+- [x] SPEC-011: explicit-memory, privacy, and retention foundation adds typed
+  explicit-memory contracts, migration `0008_memory_privacy_retention`, scoped
+  context, deterministic command paths, privacy tombstones, a 30-day
+  terminal-content retention worker, focused documentation, CI coverage, and a
+  dedicated validator. PostgreSQL/Redis lifecycle, migration downgrade/re-upgrade,
+  prior-spec regressions, image build, Compose runtime, and safe readiness-failure
+  proof passed without a Telegram token or provider request.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -135,6 +142,37 @@ Out of scope:
   remains outside claim transactions and does not imply exactly-once generation.
 
 ## Validation
+
+- 2026-08-01 SPEC-011 final evidence: `./scripts/validate.sh` passed 136
+  selected no-network tests, Ruff lint/format, strict mypy, Harness checks, and
+  `git diff --check`. `validate-memory.sh` passed 7 focused unit/context tests,
+  3 PostgreSQL schema/behavior tests covering conversation and connection
+  isolation, profile erasure, content-free inspector output, exact-cutoff
+  retention, idempotence, and migration downgrade/re-upgrade. `validate-db.sh`
+  passed 22 PostgreSQL tests and a full downgrade-to-base/re-upgrade lifecycle.
+  Ingress (6), conversation (3), planning (1), delivery (5 unit, 16 adapter,
+  7 integration), personality (22 lifecycle, 4 unit, 2 integration), and
+  commands (37 unit, 14 integration) validators passed. Docker built
+  `january-backend:spec-011`; Compose configuration passed; after migration
+  `0008`, `/`, `/health`, `/live`, `/ready`, and `/docs` returned HTTP 200 on
+  port 8011. Stopping only PostgreSQL produced `/ready` HTTP 503 with safe JSON
+  and a request ID; `docker compose down` removed project services and network.
+- 2026-08-01 SPEC-011 current evidence: `./scripts/validate.sh` passed 136
+  selected no-network tests, Ruff lint/format, strict mypy, Harness checks, and
+  `git diff --check`. `validate-db.sh` upgraded through `0008`, passed 20
+  PostgreSQL integration tests, downgraded to base, and re-upgraded. The
+  dedicated `validate-memory.sh` passed its focused tests, migration schema
+  proof, downgrade to `0007`, and re-upgrade. `january-backend:spec-011` built;
+  Compose configuration passed; with migration `0008` applied, `/`, `/health`,
+  `/live`, `/ready`, and `/docs` returned HTTP 200 on port 8011. After stopping
+  only the database service, `/ready` returned safe HTTP 503 with a request ID;
+  `docker compose down` left `docker compose ps` empty.
+- 2026-08-01 regression evidence: ingress (6), conversation (3), planning (1),
+  delivery (7 integration plus 21 focused tests), personality (20 migration
+  lifecycle integrations, 4 unit, and 2 focused integrations), and commands
+  (37 unit plus 14 command integrations) all passed against project-owned
+  PostgreSQL/Redis with no real Telegram or provider request. The personality
+  validator now asserts service readiness after its nested database lifecycle.
 
 - 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
   without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected
@@ -218,7 +256,12 @@ Out of scope:
 
 ## Result
 
-SPEC-001 through SPEC-009 are implemented. SPEC-010 command parsing, durable
+SPEC-001 through SPEC-010 are implemented. SPEC-011 explicit-memory/privacy
+work is in progress: typed memory contracts, `0008_memory_privacy_retention`,
+conversation-scoped memory/audit models, content-redaction markers, and a
+scoped idempotent repository are present. The memory command grammar is typed
+and safely isolated pending transactional command-worker execution. Docker is
+currently inaccessible for migration lifecycle validation. SPEC-010 command parsing, durable
 job handoff, response-plan XOR, preference-event schema, separate command
 worker, demo lifecycle wiring, and a PostgreSQL/Redis command validator are in
 progress. Current evidence: `validate.sh` passed 118 selected no-network tests;

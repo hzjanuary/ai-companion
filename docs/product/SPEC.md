@@ -1830,25 +1830,25 @@ Codex should not stop for minor implementation choices that do not alter accepte
 
 ---
 
-# 21. Initial SPEC Breakdown
+# 21. Accepted Specification Sequence
 
-Recommended specification sequence:
+The implemented and committed execution history is authoritative for completed
+and active specifications. This sequence supersedes the earlier recommended
+draft and must not renumber completed work.
 
 ```text
 SPEC-001 Repository and Backend Bootstrap
 SPEC-002 Database and Persistence Foundation
 SPEC-003 Telegram Platform Adapter
-SPEC-004 Webhook Processing and Idempotency
+SPEC-004 Telegram Ingress, Queueing, and Idempotency
 SPEC-005 Conversation Domain and Context
-SPEC-006 LLM Provider Abstraction
-SPEC-007 Response Planning and Policy
-SPEC-008 Personality Profiles
-SPEC-009 Mentions and Sticker Actions
-SPEC-010 Memory and Privacy
-SPEC-011 Operational Scalability
-SPEC-012 Admin Dashboard
-SPEC-013 Zalo Feasibility
-SPEC-014 Zalo Adapter
+SPEC-006 LLM Provider Abstraction and Response Planning
+SPEC-007 Outbound Actions and Delivery
+SPEC-008 Operator Bootstrap and End-to-End Demo
+SPEC-009 Personality Profiles and Group Configuration
+SPEC-010 Telegram Administration Commands and User Preferences
+SPEC-011 Explicit Memory, Privacy, and Retention Controls
+SPEC-012 Safety Policy and Rate Limiting
 ```
 
 Each SPEC should define:

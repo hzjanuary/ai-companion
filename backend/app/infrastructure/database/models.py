@@ -40,6 +40,11 @@ from app.domain.persistence import (
     IncomingUpdateStatus,
     IngressOutboxStatus,
     IngressSource,
+    MemoryDeletionReason,
+    MemoryKind,
+    MemoryScope,
+    MemoryStatus,
+    MemoryVisibility,
     MessageDirection,
     MessageProcessingStatus,
     MessageType,
@@ -202,6 +207,7 @@ class ConversationModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_platform_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    memory_privacy_revision: Mapped[int] = mapped_column(default=0, nullable=False)
 
 
 class ConversationConfigurationRevisionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -255,6 +261,7 @@ class ParticipantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     teasing_allowed: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    privacy_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,
@@ -313,6 +320,9 @@ class MessageModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     platform_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     platform_thread_id: Mapped[str | None] = mapped_column(String(255))
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_redacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     mentions_assistant: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
@@ -361,6 +371,9 @@ class IncomingPlatformUpdateModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=False
     )
     queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payload_redacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class IngressOutboxEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -504,7 +517,7 @@ class TelegramCommandJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("participants.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     command_name: Mapped[str] = mapped_column(String(32), nullable=False)
-    arguments: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    arguments: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     status: Mapped[CommandJobStatus] = mapped_column(
         string_enum(CommandJobStatus, "telegram_command_job_status"),
         default=CommandJobStatus.PENDING,
@@ -521,6 +534,79 @@ class TelegramCommandJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     result_code: Mapped[str | None] = mapped_column(String(64))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    arguments_redacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class MemoryItemModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "memory_items"
+    __table_args__ = (
+        UniqueConstraint("public_id"),
+        UniqueConstraint("source_command_job_id"),
+        Index("ix_memory_items_active_conversation", "conversation_id", "status"),
+    )
+
+    public_id: Mapped[str] = mapped_column(String(24), nullable=False)
+    assistant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("assistants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    platform_connection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_connections.id", ondelete="RESTRICT"), nullable=False
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False
+    )
+    creator_participant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), nullable=False
+    )
+    kind: Mapped[MemoryKind] = mapped_column(
+        string_enum(MemoryKind, "memory_kind"), nullable=False
+    )
+    scope: Mapped[MemoryScope] = mapped_column(
+        string_enum(MemoryScope, "memory_scope"), nullable=False
+    )
+    visibility: Mapped[MemoryVisibility] = mapped_column(
+        string_enum(MemoryVisibility, "memory_visibility"), nullable=False
+    )
+    status: Mapped[MemoryStatus] = mapped_column(
+        string_enum(MemoryStatus, "memory_status"),
+        default=MemoryStatus.ACTIVE,
+        nullable=False,
+    )
+    content: Mapped[str | None] = mapped_column(Text)
+    normalized_content_hash: Mapped[str | None] = mapped_column(String(64))
+    confidence: Mapped[float] = mapped_column(nullable=False)
+    source_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_command_job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("telegram_command_jobs.id", ondelete="RESTRICT"), nullable=False
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_reason: Mapped[MemoryDeletionReason | None] = mapped_column(
+        string_enum(MemoryDeletionReason, "memory_deletion_reason")
+    )
+
+
+class MemoryEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Content-free audit trail for memory mutations."""
+
+    __tablename__ = "memory_events"
+
+    memory_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("memory_items.id", ondelete="RESTRICT"), index=True
+    )
+    command_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("telegram_command_jobs.id", ondelete="RESTRICT"), index=True
+    )
+    actor_participant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), index=True
+    )
+    action_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    deletion_reason: Mapped[str | None] = mapped_column(String(32))
+    affected_count: Mapped[int | None] = mapped_column()
 
 
 class ParticipantPreferenceEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -604,6 +690,9 @@ class ResponsePlanModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     language: Mapped[str | None] = mapped_column(String(16))
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
     schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_redacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class OutboundActionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -656,6 +745,9 @@ class OutboundActionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_error_category: Mapped[str | None] = mapped_column(String(64))
     last_error_code: Mapped[str | None] = mapped_column(String(64))
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payload_redacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class OutboundDeliveryAttemptModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):

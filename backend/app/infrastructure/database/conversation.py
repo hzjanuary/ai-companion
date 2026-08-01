@@ -365,8 +365,9 @@ class SqlAlchemyConversationProcessor:
             session.add(participant)
             await session.flush()
             return participant
-        participant.username = identity.username
-        participant.display_name = identity.display_name
+        if participant.privacy_deleted_at is None:
+            participant.username = identity.username
+            participant.display_name = identity.display_name
         participant.is_bot = identity.is_bot
         participant.last_seen_at = observed_at
         if membership_update:

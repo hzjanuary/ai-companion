@@ -86,3 +86,8 @@ jobs:
           JANUARY_ENVIRONMENT: test
           JANUARY_DATABASE_HOST: 127.0.0.1
           JANUARY_REDIS_URL: redis://127.0.0.1:6379/0
+      - run: uv run pytest -m memory_integration && uv run alembic downgrade 0007_telegram_commands && uv run alembic upgrade head
+        env:
+          JANUARY_ENVIRONMENT: test
+          JANUARY_DATABASE_HOST: 127.0.0.1
+          JANUARY_REDIS_URL: redis://127.0.0.1:6379/0

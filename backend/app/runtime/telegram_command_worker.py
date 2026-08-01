@@ -7,17 +7,21 @@ changes, and hands replies to the normal outbound delivery worker.
 import asyncio
 import logging
 import socket
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
 
 from app.application.commands import CommandOperation, command_response, parse_command
+from app.application.memory import MemoryValidationError, normalize_explicit_memory
 from app.application.ports.platform import PlatformAdapter, PlatformAdapterError
 from app.application.response_plan import ResponsePlanCandidate
 from app.core.config import Settings, get_settings
 from app.domain.persistence import (
     CommandAuthorizationOutcome,
     ConversationType,
+    MemoryDeletionReason,
+    MemoryScope,
     PersonalityProfileStatus,
     ResponseMode,
 )
@@ -25,6 +29,7 @@ from app.domain.planning import PlanReasonCode
 from app.infrastructure.database.commands import SqlAlchemyCommandRepository
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.group_configuration import ConfigurationChange
+from app.infrastructure.database.memory import SqlAlchemyMemoryRepository
 from app.infrastructure.database.models import (
     AssistantModel,
     ConversationConfigurationRevisionModel,
@@ -34,6 +39,7 @@ from app.infrastructure.database.models import (
     PersonalityProfileVersionModel,
     PlatformConnectionModel,
 )
+from app.infrastructure.database.privacy import SqlAlchemyPrivacyRepository
 from app.infrastructure.telegram.adapter import TelegramAdapter
 
 logger = logging.getLogger(__name__)
@@ -53,6 +59,7 @@ async def consume_once(
         return 0
     lease_owner = owner or worker_name(settings)
     repository = SqlAlchemyCommandRepository(database.session_factory)
+    memory_repository = SqlAlchemyMemoryRepository(database.session_factory)
     jobs = await repository.claim(
         lease_owner, settings.command_batch_size, settings.command_lease_seconds
     )
@@ -76,6 +83,22 @@ async def consume_once(
                 continue
             if request.operation == CommandOperation.UNKNOWN:
                 await _finish(repository, job, lease_owner, "unknown", language)
+                continue
+            if request.operation == CommandOperation.MEMORY:
+                await _handle_memory_command(
+                    database,
+                    repository,
+                    memory_repository,
+                    job,
+                    lease_owner,
+                    request,
+                    language,
+                    conversation,
+                    participant,
+                    assistant,
+                    settings,
+                    adapter,
+                )
                 continue
             protected = request.operation == CommandOperation.CONFIGURATION
             if protected and conversation.conversation_type != ConversationType.PRIVATE:
@@ -226,6 +249,236 @@ async def consume_once(
         if owns_adapter and isinstance(client, TelegramAdapter):
             await client.aclose()
     return len(jobs)
+
+
+async def _handle_memory_command(
+    database: Database,
+    commands: SqlAlchemyCommandRepository,
+    memories: SqlAlchemyMemoryRepository,
+    job: object,
+    owner: str,
+    request: object,
+    language: str,
+    conversation: ConversationModel,
+    participant: ParticipantModel,
+    assistant: AssistantModel,
+    settings: Settings,
+    adapter: PlatformAdapter | None,
+) -> None:
+    """Execute only explicit-memory commands; none construct a provider request."""
+
+    from app.application.commands import CommandRequest
+    from app.infrastructure.database.models import TelegramCommandJobModel
+
+    assert isinstance(job, TelegramCommandJobModel)
+    assert isinstance(request, CommandRequest)
+    scope = (
+        MemoryScope.PRIVATE_CONVERSATION
+        if conversation.conversation_type == ConversationType.PRIVATE
+        else MemoryScope.GROUP_CONVERSATION
+    )
+    common = {
+        "assistant_id": assistant.id,
+        "platform_connection_id": conversation.platform_connection_id,
+        "conversation_id": conversation.id,
+    }
+    if request.action == "summary":
+        count = await memories.count_active(**common)
+        detail = (
+            f" active={count}; /memory list; /memory remember <fact>; "
+            "/forget <id>; group reset requires an administrator."
+        )
+        await _finish(commands, job, owner, "memory_summary", language, detail=detail)
+        return
+    if request.action == "list":
+        items = await memories.active_for_conversation(**common, limit=11)
+        detail = _memory_list_detail(items[:10], more=len(items) > 10)
+        await _finish(commands, job, owner, "memory_summary", language, detail=detail)
+        return
+    if request.action == "remember":
+        if not isinstance(request.value, str):
+            await _finish(commands, job, owner, "usage", language)
+            return
+        try:
+            draft = normalize_explicit_memory(request.value, scope)
+        except MemoryValidationError:
+            await _finish(commands, job, owner, "usage", language)
+            return
+        await memories.create(
+            **common,
+            creator_participant_id=participant.id,
+            source_message_id=job.message_id,
+            source_command_job_id=job.id,
+            draft=draft,
+        )
+        await _finish(commands, job, owner, "memory_saved", language)
+        return
+    if request.action == "forget":
+        if not isinstance(request.value, str):
+            await _finish(commands, job, owner, "usage", language)
+            return
+        target = await memories.resolve_active(**common, public_id=request.value)
+        if target is None:
+            await _finish(commands, job, owner, "memory_missing", language)
+            return
+        is_creator = target.creator_participant_id == participant.id
+        if (
+            not is_creator
+            and conversation.conversation_type == ConversationType.PRIVATE
+        ):
+            await _finish(commands, job, owner, "denied", language)
+            return
+        if not is_creator:
+            authorized = await _fresh_group_admin(
+                commands,
+                job,
+                owner,
+                language,
+                conversation,
+                participant,
+                settings,
+                adapter,
+            )
+            if not authorized:
+                return
+        deleted = await memories.delete(
+            **common,
+            public_id=request.value,
+            actor_id=participant.id,
+            reason=(
+                MemoryDeletionReason.CREATOR_REQUEST
+                if is_creator
+                else MemoryDeletionReason.USER_REQUEST
+            ),
+        )
+        await _finish(
+            commands,
+            job,
+            owner,
+            "memory_deleted" if deleted else "memory_missing",
+            language,
+        )
+        return
+    if request.action == "reset_group":
+        if conversation.conversation_type == ConversationType.PRIVATE:
+            await _finish(commands, job, owner, "memory_private_reset", language)
+            return
+        authorized = await _fresh_group_admin(
+            commands,
+            job,
+            owner,
+            language,
+            conversation,
+            participant,
+            settings,
+            adapter,
+        )
+        if not authorized:
+            return
+        count = await memories.reset_group(
+            **common,
+            actor_id=participant.id,
+            command_job_id=job.id,
+        )
+        await _finish(
+            commands, job, owner, "memory_reset", language, detail=f" count={count}"
+        )
+        return
+    if request.action == "warning":
+        await _finish(commands, job, owner, "forget_me_warning", language)
+        return
+    if request.action == "confirm":
+        result = await SqlAlchemyPrivacyRepository(
+            database.session_factory
+        ).erase_subject(
+            assistant_id=assistant.id,
+            platform_connection_id=conversation.platform_connection_id,
+            platform_user_id=participant.platform_user_id,
+            command_job_id=job.id,
+        )
+        await _finish(
+            commands,
+            job,
+            owner,
+            "forget_me_unchanged" if result.already_deleted else "forget_me_done",
+            language,
+        )
+        return
+    await _finish(commands, job, owner, "safe_failure", language)
+
+
+def _memory_list_detail(items: Sequence[object], *, more: bool) -> str:
+    from app.infrastructure.database.memory import MemoryListEntry
+
+    lines: list[str] = []
+    for entry in items:
+        assert isinstance(entry, MemoryListEntry)
+        item = entry.item
+        preview = (item.content or "")[:80]
+        suffix = "..." if item.content and len(item.content) > len(preview) else ""
+        created = item.created_at.date().isoformat()
+        lines.append(
+            f" {item.public_id} [{created}; {entry.creator_label}]: {preview}{suffix}"
+        )
+    detail = "".join(lines) if lines else " none"
+    return f"{detail} more=1" if more else detail
+
+
+async def _fresh_group_admin(
+    commands: SqlAlchemyCommandRepository,
+    job: object,
+    owner: str,
+    language: str,
+    conversation: ConversationModel,
+    participant: ParticipantModel,
+    settings: Settings,
+    adapter: PlatformAdapter | None,
+) -> bool:
+    from app.infrastructure.database.models import TelegramCommandJobModel
+
+    assert isinstance(job, TelegramCommandJobModel)
+    client = adapter or TelegramAdapter(settings)
+    try:
+        member = await client.get_chat_member(
+            conversation.platform_conversation_id, participant.platform_user_id
+        )
+    except PlatformAdapterError as error:
+        if adapter is None and isinstance(client, TelegramAdapter):
+            await client.aclose()
+        if (
+            error.retryable
+            and job.attempt_count < settings.command_max_authorization_attempts
+        ):
+            await commands.retry(
+                job.id, owner, _authorization_retry_delay(settings, job.attempt_count)
+            )
+        else:
+            await _finish(
+                commands,
+                job,
+                owner,
+                "temporary_failure" if error.retryable else "denied",
+                language,
+                (
+                    CommandAuthorizationOutcome.RETRYABLE_FAILURE
+                    if error.retryable
+                    else CommandAuthorizationOutcome.PERMANENT_FAILURE
+                ),
+            )
+        return False
+    if adapter is None and isinstance(client, TelegramAdapter):
+        await client.aclose()
+    if not (member.is_administrator or member.is_owner):
+        await _finish(
+            commands,
+            job,
+            owner,
+            "denied",
+            language,
+            CommandAuthorizationOutcome.DENIED,
+        )
+        return False
+    return True
 
 
 async def _load_state(

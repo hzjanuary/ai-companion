@@ -125,3 +125,19 @@ ignored local configuration and check it before any live operation:
 explicit confirmation. The allowlist is enforced before conversation processing
 and again before outbound delivery. `./scripts/validate-demo.sh` is synthetic:
 it uses fake adapters and local PostgreSQL/Redis only.
+
+## Explicit Memory, Privacy, and Retention
+
+Memory is explicit-only and scoped to the exact conversation. The command
+worker never invokes a model provider for memory/privacy commands. `/forget_me`
+warns without mutation; only `/forget_me confirm` erases/anonymizes January's
+primary-database state. Deleted memory and redacted raw content are physically
+cleared while technical tombstones remain.
+
+```bash
+JANUARY_RETENTION_WORKER_ENABLED=true uv run python -m app.runtime.retention_worker --once
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-memory.sh
+```
+
+The dedicated worker uses PostgreSQL only, applies a maximum 30-day raw-content
+limit in bounded batches, and never calls Telegram or an LLM.

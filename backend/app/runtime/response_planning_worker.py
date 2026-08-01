@@ -129,6 +129,7 @@ async def consume_once(
                     job.response_schema_version,
                 )
                 continue
+            memory_privacy_revision = conversation.memory_privacy_revision
             if (
                 conversation.status.value == "paused"
                 or current_revision.response_mode.value == "paused"
@@ -171,6 +172,18 @@ async def consume_once(
                 ),
                 frozenset(StickerIntent) if revision.stickers_enabled else frozenset(),
             )
+
+            # Do not send context assembled before a durable privacy/memory change.
+            async with database.session_factory() as session:
+                fresh_conversation = await session.get(
+                    ConversationModel, job.conversation_id
+                )
+            if (
+                fresh_conversation is None
+                or fresh_conversation.memory_privacy_revision != memory_privacy_revision
+            ):
+                await repository.release_for_context_change(job.id, lease_owner)
+                continue
 
             async def record(
                 provider: ModelProvider,
