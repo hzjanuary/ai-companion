@@ -25,8 +25,10 @@ from app.infrastructure.database.models import (
     OutboundRecoveryEventModel,
     PersonalityProfileVersionModel,
     PlatformConnectionModel,
+    RateLimitEventModel,
     ResponsePlanModel,
     ResponsePlanningJobModel,
+    SafetyPolicyDecisionModel,
     TelegramCommandJobModel,
 )
 
@@ -201,6 +203,60 @@ async def inspect_latest(
                     for item in memory_items
                 ],
                 "latest_event_codes": [event.action_code for event in memory_events],
+            }
+            safety_decisions = list(
+                await session.scalars(
+                    select(SafetyPolicyDecisionModel)
+                    .order_by(SafetyPolicyDecisionModel.created_at.desc())
+                    .limit(20)
+                )
+            )
+            rate_events = list(
+                await session.scalars(
+                    select(RateLimitEventModel)
+                    .order_by(RateLimitEventModel.created_at.desc())
+                    .limit(20)
+                )
+            )
+            summary["safety_rate_limiting"] = {
+                "enabled": settings.rate_limit_enabled,
+                "safety_decisions": [
+                    {
+                        "planning_job_id": str(item.planning_job_id)
+                        if item.planning_job_id
+                        else None,
+                        "response_plan_id": str(item.response_plan_id)
+                        if item.response_plan_id
+                        else None,
+                        "policy_version": item.policy_version.value,
+                        "stage": item.stage.value,
+                        "outcome": item.outcome.value,
+                        "reason_code": item.reason_code.value
+                        if item.reason_code
+                        else None,
+                        "transformed": item.transformed,
+                    }
+                    for item in safety_decisions
+                ],
+                "rate_limit_events": [
+                    {
+                        "planning_job_id": str(item.planning_job_id)
+                        if item.planning_job_id
+                        else None,
+                        "outbound_action_id": str(item.outbound_action_id)
+                        if item.outbound_action_id
+                        else None,
+                        "operation": item.operation.value,
+                        "limiting_scope": item.limiting_scope.value
+                        if item.limiting_scope
+                        else None,
+                        "provider_id": item.provider_id,
+                        "allowed": item.allowed,
+                        "retry_after_seconds": item.retry_after_seconds,
+                        "configuration_version": item.configuration_version,
+                    }
+                    for item in rate_events
+                ],
             }
             if update is None:
                 return {"latest_update": None, **summary}

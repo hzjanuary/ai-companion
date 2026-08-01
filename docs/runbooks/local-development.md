@@ -191,6 +191,21 @@ retention pass outside validation, enable the dedicated no-network worker:
 JANUARY_RETENTION_WORKER_ENABLED=true uv run python -m app.runtime.retention_worker --once
 ```
 
+## Safety And Rate Limits
+
+SPEC-012 uses `response-plan-v2` and `safety-policy-v1`. Hard safety boundaries
+cannot be disabled and this is not comprehensive semantic moderation. When
+`JANUARY_RATE_LIMIT_ENABLED=true`, Redis is required for provider and Telegram
+I/O; an outage makes `/ready` return safe `503` and leaves durable work
+retryable. Commands and privacy deletion remain database mutations, while their
+delivery acknowledgements may wait for Redis capacity.
+
+Run the no-credential policy, PostgreSQL, and Redis proof with:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-safety.sh
+```
+
 ## Guarded Telegram Demo
 
 The optional polling-only dedicated-bot workflow is documented in

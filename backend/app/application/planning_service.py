@@ -32,12 +32,18 @@ async def generate_validated_plan(
         [ModelProvider, bool, ProviderError | None, int], Awaitable[None]
     ]
     | None = None,
+    before_provider: Callable[[ModelProvider], Awaitable[ProviderError | None]]
+    | None = None,
 ) -> PlanningGeneration:
     for provider in (primary, fallback):
         if provider is None:
             continue
         errors: tuple[str, ...] = ()
         for correction in range(correction_attempts + 1):
+            if before_provider is not None:
+                limit_error = await before_provider(provider)
+                if limit_error is not None:
+                    return PlanningGeneration(None, limit_error, provider)
             current = GenerationRequest(
                 planning_job_id=request.planning_job_id,
                 context=request.context,

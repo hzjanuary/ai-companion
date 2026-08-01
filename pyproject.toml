@@ -35,6 +35,7 @@ markers = [
   "personality_integration: requires project PostgreSQL personality configuration schema",
   "command_integration: requires project PostgreSQL and Redis command schema",
   "memory_integration: requires project PostgreSQL and Redis memory/privacy schema",
+  "safety_integration: requires project PostgreSQL and Redis safety/rate schema",
 ]
 
 [tool.ruff]

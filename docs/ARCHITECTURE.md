@@ -104,3 +104,9 @@ only as JSON-delimited untrusted data. Privacy and memory mutations advance a
 durable conversation revision that planning rechecks immediately before
 provider I/O. The retention runtime owns no Telegram, Redis, or provider client
 and is separate from API startup.
+
+SPEC-012 keeps hard safety policy and rate-limit contracts in the inner layers.
+Redis is an infrastructure implementation of atomic multi-scope coordination;
+enabled coordination is required for provider and Telegram I/O, while command
+and privacy database mutations remain independent. Content-free PostgreSQL
+decision records and the inspector expose policy state without unsafe content.

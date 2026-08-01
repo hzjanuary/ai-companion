@@ -1,6 +1,7 @@
 """Durable outbound delivery worker with explicit ambiguity handling."""
 
 import asyncio
+import logging
 import socket
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -15,6 +16,8 @@ from app.application.ports.platform import (
     SendTextRequest,
     SentMessage,
 )
+from app.application.ports.rate_limit import RateLimiter
+from app.application.rate_limit_rules import delivery_rules
 from app.core.config import Settings
 from app.domain.conversation import MembershipStatus
 from app.domain.outbound import (
@@ -24,6 +27,14 @@ from app.domain.outbound import (
     OutboundActionStatus,
 )
 from app.domain.persistence import AssistantStatus
+from app.domain.rate_limit import RateLimitDecision, RateLimitOperation
+from app.domain.safety import (
+    SafetyDecision,
+    SafetyOutcome,
+    SafetyPolicyVersion,
+    SafetyReasonCode,
+    SafetyStage,
+)
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
     AssistantModel,
@@ -33,8 +44,11 @@ from app.infrastructure.database.models import (
     OutboundActionModel,
     ParticipantModel,
     PlatformConnectionModel,
+    ResponsePlanModel,
 )
 from app.infrastructure.database.outbound import SqlAlchemyOutboundRepository
+from app.infrastructure.database.safety import SqlAlchemySafetyRepository
+from app.infrastructure.rate_limit import RateLimitUnavailable, RedisRateLimiter
 from app.infrastructure.telegram.adapter import TelegramAdapter
 from app.infrastructure.telegram.assets import TelegramStickerAssetResolver
 from app.infrastructure.telegram.rendering import (
@@ -42,13 +56,18 @@ from app.infrastructure.telegram.rendering import (
     render_text_with_mentions,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def worker_name(settings: Settings) -> str:
     return f"{settings.outbound_owner_name}-{socket.gethostname()}"
 
 
 async def consume_once(
-    settings: Settings, database: Database, adapter: TelegramAdapter | None = None
+    settings: Settings,
+    database: Database,
+    adapter: TelegramAdapter | None = None,
+    rate_limiter: RateLimiter | None = None,
 ) -> int:
     if not settings.outbound_delivery_enabled:
         return 0
@@ -58,6 +77,15 @@ async def consume_once(
         owner, settings.outbound_batch_size, settings.outbound_lease_seconds
     )
     owns_adapter = adapter is None
+    owns_limiter = rate_limiter is None and settings.rate_limit_enabled
+    limiter = (
+        rate_limiter
+        if rate_limiter is not None
+        else RedisRateLimiter(settings)
+        if settings.rate_limit_enabled
+        else None
+    )
+    safety_repository = SqlAlchemySafetyRepository(database.session_factory)
     sender = adapter or TelegramAdapter(settings)
     asset_resolver = TelegramStickerAssetResolver(settings)
     try:
@@ -144,6 +172,83 @@ async def consume_once(
                         error_category="sticker_not_configured",
                     )
                     continue
+                if not await _safety_allows_delivery(database, action):
+                    await safety_repository.record_decision(
+                        planning_job_id=None,
+                        response_plan_id=action.response_plan_id,
+                        conversation_id=action.conversation_id,
+                        decision=SafetyDecision(
+                            SafetyPolicyVersion.V1,
+                            SafetyStage.PRE_DELIVERY,
+                            SafetyOutcome.SILENT,
+                            SafetyReasonCode.TEASING_TARGET_OPTED_OUT,
+                        ),
+                    )
+                    await repository.finalize(
+                        action.id,
+                        owner,
+                        OutboundActionStatus.SKIPPED,
+                        DeliveryAttemptStatus.REJECTED,
+                        DeliveryCertainty.NOT_SENT,
+                        error_category="stale_safety_boundary",
+                    )
+                    continue
+                if limiter is not None:
+                    try:
+                        decision = await limiter.check(
+                            RateLimitOperation.DELIVERY,
+                            delivery_rules(
+                                settings,
+                                connection_id=conversation.platform_connection_id,
+                                conversation_id=conversation.id,
+                            ),
+                        )
+                    except RateLimitUnavailable:
+                        decision = RateLimitDecision(
+                            False,
+                            retry_after_seconds=settings.rate_limit_redis_failure_retry_seconds,
+                        )
+                    await safety_repository.record_rate_limit(
+                        planning_job_id=None,
+                        outbound_action_id=action.id,
+                        operation=RateLimitOperation.DELIVERY,
+                        decision=decision,
+                        provider_id=None,
+                        configuration_version=SafetyPolicyVersion.V1.value,
+                    )
+                    if not decision.allowed:
+                        logger.info(
+                            "rate_limit_denied operation=delivery "
+                            "outbound_action_id=%s scope=%s retry_after_seconds=%s",
+                            action.id,
+                            decision.limiting_scope,
+                            decision.retry_after_seconds,
+                        )
+                        delay = (
+                            decision.retry_after_seconds
+                            or settings.rate_limit_redis_failure_retry_seconds
+                        )
+                        await repository.finalize(
+                            action.id,
+                            owner,
+                            OutboundActionStatus.PENDING,
+                            DeliveryAttemptStatus.REJECTED,
+                            DeliveryCertainty.NOT_SENT,
+                            error_category="rate_limited",
+                            retry_after_seconds=float(delay),
+                            available_at=datetime.now(UTC) + timedelta(seconds=delay),
+                        )
+                        continue
+                await safety_repository.record_decision(
+                    planning_job_id=None,
+                    response_plan_id=action.response_plan_id,
+                    conversation_id=action.conversation_id,
+                    decision=SafetyDecision(
+                        SafetyPolicyVersion.V1,
+                        SafetyStage.PRE_DELIVERY,
+                        SafetyOutcome.ALLOW,
+                    ),
+                )
                 if not await repository.mark_external_started(action.id, owner):
                     continue
                 sent = await _send(
@@ -173,6 +278,8 @@ async def consume_once(
     finally:
         if owns_adapter:
             await sender.aclose()
+        if owns_limiter and limiter is not None:
+            await limiter.aclose()
 
 
 async def _resolve(
@@ -216,6 +323,7 @@ async def _resolve(
                     ParticipantModel.conversation_id == conversation.id,
                     ParticipantModel.id.in_(identifiers),
                     ParticipantModel.mention_allowed.is_(True),
+                    ParticipantModel.privacy_deleted_at.is_(None),
                 )
             )
         )
@@ -224,6 +332,31 @@ async def _resolve(
             by_id[identifier] for identifier in identifiers if identifier in by_id
         ]
         return conversation, reply, participants
+
+
+async def _safety_allows_delivery(
+    database: Database, action: OutboundActionModel
+) -> bool:
+    """Recheck persisted teasing targets immediately before Telegram I/O."""
+
+    async with database.session_factory() as session:
+        plan = await session.get(ResponsePlanModel, action.response_plan_id)
+        if plan is None or plan.interaction_kind.value != "teasing":
+            return True
+        identifiers = [UUID(value) for value in plan.teasing_target_participant_ids]
+        if not identifiers:
+            return False
+        allowed = list(
+            await session.scalars(
+                select(ParticipantModel.id).where(
+                    ParticipantModel.conversation_id == action.conversation_id,
+                    ParticipantModel.id.in_(identifiers),
+                    ParticipantModel.teasing_allowed.is_(True),
+                    ParticipantModel.privacy_deleted_at.is_(None),
+                )
+            )
+        )
+        return len(allowed) == len(identifiers)
 
 
 async def _stickers_allowed(

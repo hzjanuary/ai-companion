@@ -138,6 +138,9 @@ class SqlAlchemyConversationContextReader:
             sender_display_name=participant.display_name if participant else "Unknown",
             mention_allowed=participant.mention_allowed if participant else False,
             teasing_allowed=participant.teasing_allowed if participant else False,
+            privacy_deleted=participant.privacy_deleted_at is not None
+            if participant
+            else False,
         )
 
     @staticmethod

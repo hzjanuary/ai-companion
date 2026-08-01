@@ -34,6 +34,6 @@ if ! docker compose exec -T database pg_isready -U "$JANUARY_DATABASE_USER" -d "
 fi
 
 "$uv_bin" run alembic upgrade head
-"$uv_bin" run pytest -m "integration and not ingress_integration"
+"$uv_bin" run pytest -m "integration and not ingress_integration and not safety_integration"
 "$uv_bin" run alembic downgrade base
 "$uv_bin" run alembic upgrade head

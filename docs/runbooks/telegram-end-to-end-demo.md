@@ -32,6 +32,11 @@ Missing sticker mappings skip stickers. `delivery_unknown` is never resent
 automatically; use the explicit recovery command only after accepting a
 possible duplicate.
 
+With `JANUARY_RATE_LIMIT_ENABLED=true`, Redis failure blocks provider and
+Telegram I/O and requeues durable work. The safety policy rechecks current
+mention/teasing opt-outs and privacy deletion immediately before external I/O;
+the demo never treats its synthetic validation as semantic moderation proof.
+
 Synthetic proof is safe to run in CI or locally and does not require a token,
 provider, or public network:
 

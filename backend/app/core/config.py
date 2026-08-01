@@ -68,6 +68,25 @@ class Settings(BaseSettings):
     redis_block_timeout_ms: int = Field(default=1000, ge=1, le=60_000)
     redis_batch_size: int = Field(default=10, ge=1, le=100)
     redis_reclaim_idle_ms: int = Field(default=60_000, ge=1_000, le=86_400_000)
+    rate_limit_enabled: bool = False
+    rate_limit_generation_deployment_per_minute: int = Field(
+        default=60, ge=1, le=100_000
+    )
+    rate_limit_generation_connection_per_minute: int = Field(
+        default=30, ge=1, le=100_000
+    )
+    rate_limit_generation_conversation_per_minute: int = Field(
+        default=12, ge=1, le=100_000
+    )
+    rate_limit_generation_participant_per_minute: int = Field(
+        default=6, ge=1, le=100_000
+    )
+    rate_limit_generation_provider_per_minute: int = Field(default=40, ge=1, le=100_000)
+    rate_limit_delivery_deployment_per_second: int = Field(default=20, ge=1, le=10_000)
+    rate_limit_delivery_connection_per_second: int = Field(default=10, ge=1, le=10_000)
+    rate_limit_delivery_conversation_per_second: int = Field(default=2, ge=1, le=10_000)
+    rate_limit_redis_failure_retry_seconds: int = Field(default=5, ge=1, le=300)
+    rate_limit_cooldown_notice_seconds: int = Field(default=60, ge=1, le=3600)
     ingress_outbox_batch_size: int = Field(default=50, ge=1, le=500)
     ingress_outbox_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
     ingress_event_schema_version: int = Field(default=1, ge=1, le=100)
@@ -129,9 +148,9 @@ class Settings(BaseSettings):
     command_max_profiles_shown: int = Field(default=8, ge=1, le=20)
     command_ambient_selective_enabled: bool = False
     command_menu_live_management_enabled: bool = False
-    prompt_version: str = Field(default="spec-006-v1", min_length=1, max_length=64)
+    prompt_version: str = Field(default="spec-012-v1", min_length=1, max_length=64)
     response_plan_schema_version: str = Field(
-        default="response-plan-v1", min_length=1, max_length=64
+        default="response-plan-v2", min_length=1, max_length=64
     )
     response_plan_text_limit: int = Field(default=500, ge=1, le=4000)
     llm_live_verification_enabled: bool = False

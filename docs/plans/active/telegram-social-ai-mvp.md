@@ -113,6 +113,15 @@ Out of scope:
   dedicated validator. PostgreSQL/Redis lifecycle, migration downgrade/re-upgrade,
   prior-spec regressions, image build, Compose runtime, and safe readiness-failure
   proof passed without a Telegram token or provider request.
+- [x] SPEC-012: added `safety-policy-v1`, `response-plan-v2` structural
+  interaction metadata, deterministic hard-boundary fallback, and current
+  mention/teasing/privacy rechecks before provider and Telegram I/O.
+- [x] SPEC-012: migration `0009_safety_rate_limiting` persists content-free
+  safety decisions and limiter events. Atomic Redis fixed-window coordination
+  enforces generation deployment/connection/conversation/participant/provider
+  scopes and delivery deployment/connection/conversation scopes. Enabled Redis
+  failure fails closed and retryable work is released without external I/O;
+  database-only commands retain their generation-quota exemption.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -173,6 +182,24 @@ Out of scope:
   (37 unit plus 14 command integrations) all passed against project-owned
   PostgreSQL/Redis with no real Telegram or provider request. The personality
   validator now asserts service readiness after its nested database lifecycle.
+- 2026-08-01 SPEC-012 final evidence: `./scripts/validate.sh` passed 145
+  selected no-network tests, Ruff lint/format, strict mypy, Harness checks, and
+  `git diff --check`. Database (22), ingress (6), conversation, planning,
+  delivery, demo, personality, command, and memory validators completed against
+  project PostgreSQL/Redis without credentials or public calls. The dedicated
+  safety validator passed 6 unit tests and the PostgreSQL/Redis integration
+  proof: schema `0009`, all limiter scopes, concurrent final-token atomicity,
+  expiry, content-free Redis keys/values, synthetic fail-closed outage, and
+  `0008 -> 0009 -> 0008 -> 0009`. `january-backend:spec-012` built and Compose
+  configuration passed. On isolated ports 8012/5434/6381, migration `0009`
+  applied and `/`, `/health`, `/live`, `/ready`, and `/docs` returned HTTP 200.
+  With the limiter enabled, stopping Redis and PostgreSQL separately produced
+  safe request-ID-bearing `/ready` 503 responses, and readiness returned 200
+  after each restart. No real Telegram or provider I/O occurred.
+- 2026-08-01 SPEC-012 follow-up audit: provider capacity is checked immediately
+  before every selected provider, including a fallback, with a focused fake
+  provider proof that denial creates no provider I/O or attempt record. Successful
+  post-generation decisions now retain their persisted response-plan ID.
 
 - 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
   without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected

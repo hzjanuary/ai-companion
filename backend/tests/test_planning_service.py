@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.application.context import ContextMessage, ConversationContext
 from app.application.model_provider import (
     GenerationRequest,
+    ModelProvider,
     ProviderCapabilities,
     ProviderError,
     ProviderResult,
@@ -140,3 +141,44 @@ def test_safety_refusal_does_not_fallback() -> None:
     )
     assert result.candidate is None
     assert fallback.calls == 0
+
+
+def test_pre_provider_gate_prevents_model_io_and_attempt_recording() -> None:
+    value = request()
+    primary = FakeProvider(ProviderId.OPENAI, [payload(value)])
+    attempts: list[object] = []
+
+    async def before_provider(provider: ModelProvider) -> ProviderError:
+        return ProviderError(
+            ProviderErrorCategory.RATE_LIMITED,
+            provider.provider_id,
+            provider.model,
+            True,
+            "generate",
+            "bounded retry",
+        )
+
+    async def record(
+        provider: ModelProvider,
+        succeeded: bool,
+        error: ProviderError | None,
+        correction: int,
+    ) -> None:
+        attempts.append((provider, succeeded, error, correction))
+
+    result = asyncio.run(
+        generate_validated_plan(
+            value,
+            ResponsePlanPolicy(100, frozenset(StickerIntent)),
+            primary,
+            None,
+            1,
+            1,
+            on_attempt=record,
+            before_provider=before_provider,
+        )
+    )
+    assert result.provider_error is not None
+    assert result.provider_error.category == ProviderErrorCategory.RATE_LIMITED
+    assert primary.calls == 0
+    assert attempts == []

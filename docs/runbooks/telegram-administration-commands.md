@@ -11,6 +11,10 @@ revision, response plan, and normal outbound delivery state. Test `/mentions
 off` and `/teasing off` from a member account, then confirm only that account's
 preferences change.
 
+These deterministic command mutations do not consume model-generation rate
+limit capacity. Their normal outbound acknowledgements still use the delivery
+queue and can wait for Redis capacity; the mutation itself remains committed.
+
 Never use this runbook to register Telegram command menus, change profile
 content, expose tokens, or test in a production group. Command menu management
 is deferred; visibility does not grant authorization.

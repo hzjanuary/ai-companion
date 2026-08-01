@@ -27,6 +27,7 @@ contract, implementation, and executable tests.
 - [SPEC-009 Personality Profiles and Group Configuration](specs/SPEC-009-personality-profiles-and-group-configuration.md)
 - [SPEC-010 Telegram Administration Commands and User Preferences](specs/SPEC-010-telegram-administration-commands-and-user-preferences.md)
 - [SPEC-011 Explicit Memory, Privacy, and Retention](specs/SPEC-011-explicit-memory-privacy-retention.md)
+- [SPEC-012 Safety Policy and Distributed Rate Limiting](specs/SPEC-012-safety-policy-and-distributed-rate-limiting.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule

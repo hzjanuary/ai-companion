@@ -35,6 +35,6 @@ class FakeDatabase:
 
 @pytest.fixture
 def client() -> AppClient:
-    app = create_app(Settings(environment="test"))
+    app = create_app(Settings(environment="test", rate_limit_enabled=False))
     app.state.database = FakeDatabase(ready=True)
     return AppClient(app)

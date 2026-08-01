@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from app.application.ports.rate_limit import RateLimiter
 from app.core.config import Settings
 from app.domain.persistence import IngressSource
 from app.infrastructure.database.database import Database
@@ -52,6 +53,10 @@ def queue_for(request: Request) -> RedisIngressQueue:
     return cast(RedisIngressQueue, request.app.state.ingress_queue)
 
 
+def rate_limiter_for(request: Request) -> RateLimiter | None:
+    return cast(RateLimiter | None, request.app.state.rate_limiter)
+
+
 def webhook_error(
     request: Request,
     status: int,
@@ -79,17 +84,23 @@ def create_router(settings: Settings) -> APIRouter:
         ready = await database_for(request).is_ready()
         queue_required = settings.telegram_delivery_mode != "disabled"
         queue_ready = await queue_for(request).is_ready() if queue_required else None
+        limiter = rate_limiter_for(request)
+        limiter_ready = await limiter.is_ready() if limiter is not None else None
         return HealthResponse(
             service=settings.app_name,
-            status="ok" if ready and queue_ready is not False else "degraded",
+            status=(
+                "ok"
+                if ready and queue_ready is not False and limiter_ready is not False
+                else "degraded"
+            ),
             application=DatabaseComponentResponse(status="ok"),
             database=DatabaseComponentResponse(status="ok" if ready else "unavailable"),
             redis=DatabaseComponentResponse(
                 status=(
                     "disabled"
-                    if queue_ready is None
+                    if queue_ready is None and limiter_ready is None
                     else "ok"
-                    if queue_ready
+                    if queue_ready is not False and limiter_ready is not False
                     else "unavailable"
                 )
             ),
@@ -108,6 +119,9 @@ def create_router(settings: Settings) -> APIRouter:
             and not await queue_for(request).is_ready()
         ):
             return dependency_unavailable(request, "Redis is unavailable")
+        limiter = rate_limiter_for(request)
+        if limiter is not None and not await limiter.is_ready():
+            return dependency_unavailable(request, "Redis is unavailable")
         return ReadinessResponse(
             service=settings.app_name,
             database=DatabaseComponentResponse(status="ok"),
@@ -115,6 +129,7 @@ def create_router(settings: Settings) -> APIRouter:
                 status=(
                     "ok"
                     if settings.telegram_delivery_mode != "disabled"
+                    or settings.rate_limit_enabled
                     else "disabled"
                 )
             ),

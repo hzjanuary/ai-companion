@@ -19,6 +19,7 @@ class ContextMessage:
     sender_display_name: str
     mention_allowed: bool
     teasing_allowed: bool
+    privacy_deleted: bool = False
 
 
 @dataclass(frozen=True, slots=True)

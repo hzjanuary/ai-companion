@@ -7,6 +7,36 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.application.context import ConversationContext
 from app.domain.planning import PlanReasonCode, StickerIntent
+from app.domain.safety import InteractionKind, SensitiveTopicCategory, safe_fallback
+
+
+class InteractionMetadata(BaseModel):
+    """Bounded structural classification supplied by response-plan-v2 models."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    kind: InteractionKind = InteractionKind.NEUTRAL
+    teasing_target_participant_ids: list[UUID] = Field(
+        default_factory=list, max_length=10
+    )
+    sensitive_topic_categories: list[SensitiveTopicCategory] = Field(
+        default_factory=list, max_length=9
+    )
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "InteractionMetadata":
+        targets = self.teasing_target_participant_ids
+        if len(set(targets)) != len(targets):
+            raise ValueError("teasing targets must be unique")
+        if self.kind == InteractionKind.TEASING and not targets:
+            raise ValueError("teasing requires at least one target")
+        if self.kind != InteractionKind.TEASING and targets:
+            raise ValueError("only teasing can include teasing targets")
+        if len(set(self.sensitive_topic_categories)) != len(
+            self.sensitive_topic_categories
+        ):
+            raise ValueError("sensitive topic categories must be unique")
+        return self
 
 
 class ResponsePlanCandidate(BaseModel):
@@ -20,6 +50,7 @@ class ResponsePlanCandidate(BaseModel):
     sticker_intent: StickerIntent | None = None
     confidence: float = Field(ge=0, le=1)
     language: str | None = Field(default=None, min_length=2, max_length=16)
+    interaction: InteractionMetadata = Field(default_factory=InteractionMetadata)
 
     @model_validator(mode="after")
     def validate_action_shape(self) -> "ResponsePlanCandidate":
@@ -29,7 +60,10 @@ class ResponsePlanCandidate(BaseModel):
         if self.should_respond and not has_action:
             raise ValueError("a response requires text or sticker intent")
         if not self.should_respond and (
-            has_action or self.reply_to_message_id is not None or self.mentions
+            has_action
+            or self.reply_to_message_id is not None
+            or self.mentions
+            or self.interaction.kind != InteractionKind.NEUTRAL
         ):
             raise ValueError("silence cannot contain action fields")
         return self
@@ -39,6 +73,7 @@ class ResponsePlanCandidate(BaseModel):
 class ResponsePlanPolicy:
     text_limit: int
     supported_stickers: frozenset[StickerIntent]
+    teasing_permitted: bool = True
 
     def apply(
         self, candidate: ResponsePlanCandidate, context: ConversationContext
@@ -64,6 +99,7 @@ class ResponsePlanPolicy:
             identifier
             for identifier in mentions
             if allowed_participants[identifier].mention_allowed
+            and not allowed_participants[identifier].privacy_deleted
         )
         text = candidate.text
         if text is not None:
@@ -78,6 +114,31 @@ class ResponsePlanPolicy:
                 confidence=candidate.confidence,
                 language=candidate.language,
             )
+        interaction = candidate.interaction
+        teasing_targets = tuple(
+            dict.fromkeys(interaction.teasing_target_participant_ids)
+        )
+        if interaction.kind == InteractionKind.TEASING and any(
+            identifier not in allowed_participants for identifier in teasing_targets
+        ):
+            raise ValueError("teasing target is outside context")
+        teasing_allowed = (
+            interaction.kind == InteractionKind.TEASING
+            and self.teasing_permitted
+            and not interaction.sensitive_topic_categories
+            and all(
+                identifier in allowed_participants
+                and allowed_participants[identifier].teasing_allowed
+                and not allowed_participants[identifier].privacy_deleted
+                for identifier in teasing_targets
+            )
+        )
+        if interaction.kind == InteractionKind.TEASING and not teasing_allowed:
+            interaction = InteractionMetadata(kind=InteractionKind.NEUTRAL)
+            sticker = None
+            text = safe_fallback(candidate.language)
+        if interaction.kind == InteractionKind.TEASING and not teasing_targets:
+            raise ValueError("teasing target is outside context")
         return ResponsePlanCandidate(
             should_respond=candidate.should_respond,
             reason_code=candidate.reason_code,
@@ -93,6 +154,7 @@ class ResponsePlanPolicy:
             sticker_intent=sticker,
             confidence=candidate.confidence,
             language=candidate.language,
+            interaction=interaction,
         )
 
 

@@ -125,17 +125,11 @@ class SqlAlchemyPlanningRepository:
                 job.lease_expires_at = None
                 return True
 
-    async def complete(
-        self,
-        job_id: UUID,
-        owner: str,
-        candidate: ResponsePlanCandidate | None,
-        provider: ProviderId | None,
-        model: str | None,
-        error: ProviderErrorCategory | None,
-        prompt_version: str,
-        schema_version: str,
+    async def release_for_rate_limit(
+        self, job_id: UUID, owner: str, retry_after_seconds: int
     ) -> bool:
+        """Release before external I/O and retain a bounded retryable state."""
+
         async with self._session_factory() as session:
             async with session.begin():
                 job = await session.get(
@@ -147,6 +141,37 @@ class SqlAlchemyPlanningRepository:
                     or job.lease_owner != owner
                 ):
                     return False
+                job.status = PlanningJobStatus.PENDING
+                job.available_at = datetime.now(UTC) + timedelta(
+                    seconds=retry_after_seconds
+                )
+                job.lease_owner = None
+                job.lease_expires_at = None
+                job.last_error_category = ProviderErrorCategory.RATE_LIMITED
+                return True
+
+    async def complete(
+        self,
+        job_id: UUID,
+        owner: str,
+        candidate: ResponsePlanCandidate | None,
+        provider: ProviderId | None,
+        model: str | None,
+        error: ProviderErrorCategory | None,
+        prompt_version: str,
+        schema_version: str,
+    ) -> UUID | None:
+        async with self._session_factory() as session:
+            async with session.begin():
+                job = await session.get(
+                    ResponsePlanningJobModel, job_id, with_for_update=True
+                )
+                if (
+                    job is None
+                    or job.status != PlanningJobStatus.LEASED
+                    or job.lease_owner != owner
+                ):
+                    return None
                 now = datetime.now(UTC)
                 job.selected_provider = provider
                 job.selected_model = model
@@ -160,7 +185,7 @@ class SqlAlchemyPlanningRepository:
                         if error == ProviderErrorCategory.SAFETY_REFUSAL
                         else PlanningJobStatus.FAILED
                     )
-                    return True
+                    return None
                 plan = ResponsePlanModel(
                     planning_job_id=job.id,
                     should_respond=candidate.should_respond,
@@ -175,6 +200,13 @@ class SqlAlchemyPlanningRepository:
                     language=candidate.language,
                     prompt_version=prompt_version,
                     schema_version=schema_version,
+                    interaction_kind=candidate.interaction.kind,
+                    teasing_target_participant_ids=[
+                        str(value)
+                        for value in (
+                            candidate.interaction.teasing_target_participant_ids
+                        )
+                    ],
                 )
                 session.add(plan)
                 await session.flush()
@@ -203,4 +235,4 @@ class SqlAlchemyPlanningRepository:
                     if candidate.should_respond
                     else PlanningJobStatus.NO_RESPONSE
                 )
-                return True
+                return plan.id

@@ -77,6 +77,21 @@ Provider keys are `SecretStr` settings and are never required for canonical
 validation. Model capability declarations determine whether JSON Schema output
 is requested; local schema and policy validation remains mandatory.
 
+## Safety And Rate Limits
+
+`response-plan-v2` carries closed interaction metadata and is checked against
+current context, opt-outs, privacy deletion, and personality boundaries before
+provider and Telegram I/O. `safety-policy-v1` has hard boundaries and no roast
+mode; it is structural enforcement, not comprehensive semantic moderation.
+When `JANUARY_RATE_LIMIT_ENABLED=true`, Redis atomically coordinates generation
+and delivery budgets. Redis loss fails closed for external I/O, while durable
+work retries and database-only privacy/admin commands continue. Run the
+synthetic policy and datastore proof with:
+
+```bash
+JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-safety.sh
+```
+
 Every response includes `X-Request-ID`. A syntactically valid incoming value is
 preserved; otherwise one is generated. Unhandled failures return a safe JSON
 error with the same request ID.

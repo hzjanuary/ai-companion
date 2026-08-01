@@ -20,6 +20,20 @@ def test_settings_defaults() -> None:
     assert settings.command_worker_enabled is False
     assert settings.raw_content_retention_days == 30
     assert settings.retention_worker_enabled is False
+    assert settings.rate_limit_enabled is False
+    assert settings.rate_limit_generation_conversation_per_minute == 12
+
+
+def test_rate_limit_settings_are_typed_and_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JANUARY_RATE_LIMIT_ENABLED", "true")
+    monkeypatch.setenv("JANUARY_RATE_LIMIT_GENERATION_PROVIDER_PER_MINUTE", "17")
+    settings = Settings(_env_file=None)
+    assert settings.rate_limit_enabled is True
+    assert settings.rate_limit_generation_provider_per_minute == 17
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, rate_limit_delivery_conversation_per_second=0)
 
 
 def test_command_settings_validate_retry_bounds_and_limits() -> None:

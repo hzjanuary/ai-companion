@@ -91,3 +91,7 @@ jobs:
           JANUARY_ENVIRONMENT: test
           JANUARY_DATABASE_HOST: 127.0.0.1
           JANUARY_REDIS_URL: redis://127.0.0.1:6379/0
+      - run: ./scripts/validate-safety.sh
+        env:
+          JANUARY_DB_HOST_PORT: 5433
+          JANUARY_REDIS_HOST_PORT: 6380

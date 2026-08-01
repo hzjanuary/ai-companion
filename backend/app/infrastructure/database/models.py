@@ -63,6 +63,14 @@ from app.domain.planning import (
     ProviderId,
     StickerIntent,
 )
+from app.domain.rate_limit import RateLimitOperation, RateLimitScope
+from app.domain.safety import (
+    InteractionKind,
+    SafetyOutcome,
+    SafetyPolicyVersion,
+    SafetyReasonCode,
+    SafetyStage,
+)
 from app.infrastructure.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -493,6 +501,11 @@ class ResponsePlanningJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_error_category: Mapped[ProviderErrorCategory | None] = mapped_column(
         string_enum(ProviderErrorCategory, "response_planning_error_category")
     )
+    safety_policy_version: Mapped[SafetyPolicyVersion] = mapped_column(
+        string_enum(SafetyPolicyVersion, "response_planning_safety_policy_version"),
+        default=SafetyPolicyVersion.V1,
+        nullable=False,
+    )
 
 
 class TelegramCommandJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -693,6 +706,67 @@ class ResponsePlanModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     content_redacted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    interaction_kind: Mapped[InteractionKind] = mapped_column(
+        string_enum(InteractionKind, "response_plan_interaction_kind"),
+        default=InteractionKind.NEUTRAL,
+        nullable=False,
+    )
+    teasing_target_participant_ids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=sql_text("'[]'::jsonb"), nullable=False
+    )
+
+
+class SafetyPolicyDecisionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Content-free record of a deterministic safety gate outcome."""
+
+    __tablename__ = "safety_policy_decisions"
+
+    planning_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("response_planning_jobs.id", ondelete="RESTRICT"), index=True
+    )
+    response_plan_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("response_plans.id", ondelete="RESTRICT"), index=True
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    policy_version: Mapped[SafetyPolicyVersion] = mapped_column(
+        string_enum(SafetyPolicyVersion, "safety_decision_policy_version"),
+        nullable=False,
+    )
+    stage: Mapped[SafetyStage] = mapped_column(
+        string_enum(SafetyStage, "safety_decision_stage"), nullable=False
+    )
+    outcome: Mapped[SafetyOutcome] = mapped_column(
+        string_enum(SafetyOutcome, "safety_decision_outcome"), nullable=False
+    )
+    reason_code: Mapped[SafetyReasonCode | None] = mapped_column(
+        string_enum(SafetyReasonCode, "safety_decision_reason_code")
+    )
+    transformed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class RateLimitEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Content-free result of a distributed generation or delivery check."""
+
+    __tablename__ = "rate_limit_events"
+
+    planning_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("response_planning_jobs.id", ondelete="RESTRICT"), index=True
+    )
+    outbound_action_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("outbound_actions.id", ondelete="RESTRICT"), index=True
+    )
+    operation: Mapped[RateLimitOperation] = mapped_column(
+        string_enum(RateLimitOperation, "rate_limit_operation"), nullable=False
+    )
+    limiting_scope: Mapped[RateLimitScope | None] = mapped_column(
+        string_enum(RateLimitScope, "rate_limit_scope")
+    )
+    provider_id: Mapped[str | None] = mapped_column(String(32))
+    allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    retry_after_seconds: Mapped[int | None] = mapped_column()
+    configuration_version: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class OutboundActionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
