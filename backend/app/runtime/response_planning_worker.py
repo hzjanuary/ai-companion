@@ -9,6 +9,7 @@ from app.application.model_provider import ModelProvider, ProviderError
 from app.application.personality import merge_effective
 from app.application.planning_service import generate_validated_plan
 from app.application.ports.rate_limit import RateLimiter
+from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.prompting import build_generation_request
 from app.application.rate_limit_rules import generation_rules, provider_rule
 from app.application.response_plan import ResponsePlanPolicy
@@ -41,6 +42,7 @@ from app.infrastructure.database.planning import SqlAlchemyPlanningRepository
 from app.infrastructure.database.safety import SqlAlchemySafetyRepository
 from app.infrastructure.model_providers import create_model_provider
 from app.infrastructure.rate_limit import RateLimitUnavailable, RedisRateLimiter
+from app.infrastructure.telemetry import InMemoryMetricsRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,7 @@ async def consume_once(
     primary_provider: ModelProvider | None = None,
     fallback_provider: ModelProvider | None = None,
     rate_limiter: RateLimiter | None = None,
+    telemetry: MetricsRecorder | None = None,
 ) -> int:
     if not settings.llm_enabled:
         return 0
@@ -79,6 +82,9 @@ async def consume_once(
         else None
     )
     safety_repository = SqlAlchemySafetyRepository(database.session_factory)
+    recorder = telemetry or NoOpMetricsRecorder()
+    for _ in claimed:
+        recorder.increment("january_planning_jobs_total", outcome="claimed")
     primary = primary_provider or create_model_provider(
         settings, ProviderId(settings.llm_primary_provider)
     )
@@ -247,6 +253,14 @@ async def consume_once(
                     configuration_version=SafetyPolicyVersion.V1.value,
                 )
                 if not decision.allowed:
+                    recorder.increment(
+                        "january_rate_limit_events_total",
+                        operation="generation",
+                        scope=decision.limiting_scope.value
+                        if decision.limiting_scope
+                        else "unavailable",
+                        result="denied",
+                    )
                     logger.info(
                         "rate_limit_denied operation=generation planning_job_id=%s "
                         "scope=%s retry_after_seconds=%s",
@@ -299,6 +313,14 @@ async def consume_once(
                 )
                 if decision.allowed:
                     return None
+                recorder.increment(
+                    "january_rate_limit_events_total",
+                    operation="generation",
+                    scope=decision.limiting_scope.value
+                    if decision.limiting_scope
+                    else "unavailable",
+                    result="denied",
+                )
                 logger.info(
                     "rate_limit_denied operation=provider planning_job_id=%s "
                     "scope=%s retry_after_seconds=%s",
@@ -347,6 +369,8 @@ async def consume_once(
                 settings.llm_max_correction_attempts,
                 on_attempt=record,
                 before_provider=before_provider,
+                telemetry=recorder,
+                pricing=settings.metrics_provider_pricing,
             )
             provider = outcome.provider
             if (
@@ -413,10 +437,13 @@ async def consume_once(
 async def run() -> None:
     settings = Settings()
     database = Database(settings)
+    telemetry = (
+        InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
+    )
     await database.start()
     try:
         while True:
-            processed = await consume_once(settings, database)
+            processed = await consume_once(settings, database, telemetry=telemetry)
             if processed == 0:
                 await asyncio.sleep(settings.planning_job_poll_interval_seconds)
     except asyncio.CancelledError:

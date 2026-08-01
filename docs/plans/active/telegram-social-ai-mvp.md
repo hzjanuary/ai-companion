@@ -4,7 +4,7 @@ Date: 2026-07-29
 
 ## Status
 
-Active: Telegram MVP track. SPEC-014 is `DEFERRED /
+Active: SPEC-015 Telegram observability track. SPEC-014 is `DEFERRED /
 BLOCKED_ON_EXTERNAL_PREREQUISITE` and is not the active project blocker.
 
 ## Outcome
@@ -134,8 +134,9 @@ Out of scope:
   BLOCKED_ON_EXTERNAL_PREREQUISITE` until an operator confirms a dedicated
   nonproduction OA/app environment and explicitly approves each external gate.
   This Zalo-only dependency is outside the Telegram MVP critical path.
-- [ ] SPEC-015: Telegram/product work only; scope remains pending acceptance in
-  the canonical product contract. Do not implement it yet.
+- [x] SPEC-015: Telegram MVP observability and operational telemetry completed.
+  Preserve all prior behavior while adding only content-safe, bounded telemetry;
+  no migration, Zalo runtime, or SPEC-016 scope is permitted.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -242,6 +243,22 @@ Out of scope:
   and `./scripts/validate-zalo-verification.sh` both passed. The next reserved
   implementation number is SPEC-015 for Telegram/product work only, with scope
   pending product-contract acceptance.
+- 2026-08-01 SPEC-015 evidence: added an application `MetricsRecorder` port,
+  no-op and isolated in-memory registry implementations, Prometheus-compatible
+  loopback exporter, typed JSON operational-event helper, request/correlation
+  contexts, bounded metric definitions, optional operator-configured cost rates,
+  and HTTP/ingress/conversation/planning/outbound instrumentation. No migration
+  was added. `./scripts/validate.sh` passed 150 selected no-network tests;
+  database (22), ingress (6), conversation (3), planning (1), delivery (7),
+  demo (5), personality (2 plus lifecycle), commands (14), memory (3), safety
+  (1), Zalo feasibility, Zalo verification, and
+  `./scripts/validate-observability.sh` all passed. Docker built
+  `january-backend:spec-015`; isolated Compose returned 200 for `/`, `/health`,
+  `/live`, `/ready`, and `/docs`. Explicit loopback metrics export contained the
+  `january_` families after synthetic HTTP requests and no fixture content or
+  credentials. Stopping Redis and PostgreSQL independently produced safe 503
+  readiness responses with request IDs; both recovered; Compose resources were
+  stopped afterwards. No real Telegram/provider call occurred.
 
 - 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
   without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected

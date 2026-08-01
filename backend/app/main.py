@@ -7,12 +7,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.application.ports.telemetry import NoOpMetricsRecorder
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.database.database import Database
 from app.infrastructure.queue.redis_streams import RedisIngressQueue
 from app.infrastructure.rate_limit import RedisRateLimiter
 from app.infrastructure.telegram.adapter import create_telegram_adapter
+from app.infrastructure.telemetry import (
+    InMemoryMetricsRecorder,
+    MetricsHttpExporter,
+)
 from app.interface.http.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.interface.http.models import ErrorResponse
 from app.interface.http.routes import create_router
@@ -31,6 +36,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if configured_settings.rate_limit_enabled
         else None
     )
+    telemetry = (
+        InMemoryMetricsRecorder()
+        if configured_settings.metrics_enabled
+        else NoOpMetricsRecorder()
+    )
+    metrics_exporter = (
+        MetricsHttpExporter(
+            telemetry,
+            configured_settings.metrics_bind_host,
+            configured_settings.metrics_port,
+        )
+        if configured_settings.metrics_export_enabled
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -39,6 +58,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.telegram = telegram
         app.state.ingress_queue = queue
         app.state.rate_limiter = rate_limiter
+        app.state.telemetry = telemetry
+        app.state.metrics_exporter = metrics_exporter
+        if metrics_exporter is not None:
+            await metrics_exporter.start()
         try:
             yield
         finally:
@@ -47,6 +70,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await queue.aclose()
             if rate_limiter is not None:
                 await rate_limiter.aclose()
+            if metrics_exporter is not None:
+                await metrics_exporter.close()
             await database.stop()
 
     app = FastAPI(
@@ -58,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.telegram = telegram
     app.state.ingress_queue = queue
     app.state.rate_limiter = rate_limiter
+    app.state.telemetry = telemetry
+    app.state.metrics_exporter = metrics_exporter
     app.add_middleware(RequestIdMiddleware)
     app.include_router(create_router(configured_settings))
 

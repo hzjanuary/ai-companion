@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.application.commands import CommandOperation, command_response, parse_command
 from app.application.memory import MemoryValidationError, normalize_explicit_memory
 from app.application.ports.platform import PlatformAdapter, PlatformAdapterError
+from app.application.ports.telemetry import NoOpMetricsRecorder
 from app.application.response_plan import ResponsePlanCandidate
 from app.core.config import Settings, get_settings
 from app.domain.persistence import (
@@ -41,6 +42,7 @@ from app.infrastructure.database.models import (
 )
 from app.infrastructure.database.privacy import SqlAlchemyPrivacyRepository
 from app.infrastructure.telegram.adapter import TelegramAdapter
+from app.infrastructure.telemetry import InMemoryMetricsRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -792,10 +794,21 @@ def _authorization_retry_delay(settings: Settings, attempt_count: int) -> float:
 async def run() -> None:
     settings = get_settings()
     database = Database(settings)
+    telemetry = (
+        InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
+    )
     await database.start()
     try:
         while True:
             count = await consume_once(settings, database)
+            if count:
+                telemetry.increment(
+                    "january_worker_operations_total",
+                    count,
+                    runtime="commands",
+                    operation="command_job",
+                    outcome="completed",
+                )
             if count == 0:
                 await asyncio.sleep(settings.command_poll_interval_seconds)
     finally:

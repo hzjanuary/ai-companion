@@ -3,13 +3,16 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from time import perf_counter
 
 from app.application.model_provider import (
     GenerationRequest,
     ModelProvider,
     ProviderError,
 )
+from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.response_plan import ResponsePlanCandidate, ResponsePlanPolicy
+from app.application.telemetry import record_provider_usage
 from app.domain.planning import ProviderErrorCategory
 
 
@@ -34,7 +37,11 @@ async def generate_validated_plan(
     | None = None,
     before_provider: Callable[[ModelProvider], Awaitable[ProviderError | None]]
     | None = None,
+    telemetry: MetricsRecorder | None = None,
+    pricing: dict[str, dict[str, int]] | None = None,
 ) -> PlanningGeneration:
+    recorder = telemetry or NoOpMetricsRecorder()
+    configured_pricing = pricing or {}
     for provider in (primary, fallback):
         if provider is None:
             continue
@@ -59,8 +66,21 @@ async def generate_validated_plan(
             )
             for attempt in range(transport_attempts):
                 try:
+                    started = perf_counter()
                     result = await provider.generate(current)
                 except ProviderError as error:
+                    duration = perf_counter() - started
+                    recorder.increment(
+                        "january_model_requests_total",
+                        provider=provider.provider_id.value,
+                        outcome=error.category.value,
+                    )
+                    recorder.observe(
+                        "january_model_request_duration_seconds",
+                        duration,
+                        provider=provider.provider_id.value,
+                        outcome=error.category.value,
+                    )
                     if on_attempt is not None:
                         await on_attempt(provider, False, error, correction)
                     if error.category == ProviderErrorCategory.SAFETY_REFUSAL:
@@ -69,6 +89,26 @@ async def generate_validated_plan(
                         await sleep(min(2.0, 0.25 * (2**attempt)))
                         continue
                     break
+                recorder.increment(
+                    "january_model_requests_total",
+                    provider=result.provider.value,
+                    outcome="success",
+                )
+                recorder.observe(
+                    "january_model_request_duration_seconds",
+                    result.latency.total_seconds(),
+                    provider=result.provider.value,
+                    outcome="success",
+                )
+                record_provider_usage(
+                    recorder,
+                    provider=result.provider.value,
+                    model=result.model,
+                    input_tokens=result.usage.input_tokens,
+                    output_tokens=result.usage.output_tokens,
+                    total_tokens=result.usage.total_tokens,
+                    pricing=configured_pricing,
+                )
                 if result.refused or result.safety_blocked:
                     refusal = ProviderError(
                         ProviderErrorCategory.SAFETY_REFUSAL,
@@ -80,6 +120,10 @@ async def generate_validated_plan(
                     )
                     if on_attempt is not None:
                         await on_attempt(provider, False, refusal, correction)
+                    recorder.increment(
+                        "january_response_plan_validation_total",
+                        outcome="safe_fallback",
+                    )
                     return PlanningGeneration(
                         None,
                         refusal,
@@ -91,6 +135,9 @@ async def generate_validated_plan(
                     )
                     if on_attempt is not None:
                         await on_attempt(provider, True, None, correction)
+                    recorder.increment(
+                        "january_response_plan_validation_total", outcome="valid"
+                    )
                     return PlanningGeneration(
                         policy.apply(parsed, request.context), None, provider
                     )
@@ -105,6 +152,12 @@ async def generate_validated_plan(
                     )
                     if on_attempt is not None:
                         await on_attempt(provider, False, invalid, correction)
+                    recorder.increment(
+                        "january_response_plan_validation_total",
+                        outcome="correction_requested"
+                        if correction < correction_attempts
+                        else "invalid_terminal",
+                    )
                     errors = ("response plan failed local schema or policy validation",)
                     if correction >= correction_attempts:
                         break

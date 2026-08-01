@@ -3,15 +3,22 @@
 import argparse
 import asyncio
 import logging
+from time import perf_counter
 
+from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.core.config import Settings
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.retention import SqlAlchemyRetentionRepository
+from app.infrastructure.telemetry import InMemoryMetricsRecorder
 
 logger = logging.getLogger(__name__)
 
 
-async def consume_once(settings: Settings, database: Database) -> int:
+async def consume_once(
+    settings: Settings, database: Database, telemetry: MetricsRecorder | None = None
+) -> int:
+    recorder = telemetry or NoOpMetricsRecorder()
+    started = perf_counter()
     counts = await SqlAlchemyRetentionRepository(database.session_factory).redact_once(
         retention_days=settings.raw_content_retention_days,
         batch_size=settings.retention_batch_size,
@@ -26,6 +33,19 @@ async def consume_once(settings: Settings, database: Database) -> int:
         )
     )
     logger.info("retention_redaction_complete counts=%s", counts)
+    recorder.increment(
+        "january_worker_operations_total",
+        runtime="retention",
+        operation="redaction_batch",
+        outcome="completed",
+    )
+    recorder.observe(
+        "january_worker_operation_duration_seconds",
+        perf_counter() - started,
+        runtime="retention",
+        operation="redaction_batch",
+        outcome="completed",
+    )
     return total
 
 
@@ -34,10 +54,13 @@ async def run(once: bool) -> None:
     if not settings.retention_worker_enabled:
         return
     database = Database(settings)
+    telemetry = (
+        InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
+    )
     await database.start()
     try:
         while True:
-            processed = await consume_once(settings, database)
+            processed = await consume_once(settings, database, telemetry)
             if once:
                 return
             if processed == 0:

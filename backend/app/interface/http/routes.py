@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.application.ports.rate_limit import RateLimiter
+from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.core.config import Settings
 from app.domain.persistence import IngressSource
 from app.infrastructure.database.database import Database
@@ -57,12 +58,21 @@ def rate_limiter_for(request: Request) -> RateLimiter | None:
     return cast(RateLimiter | None, request.app.state.rate_limiter)
 
 
+def telemetry_for(request: Request) -> MetricsRecorder:
+    return cast(
+        MetricsRecorder, getattr(request.app.state, "telemetry", NoOpMetricsRecorder())
+    )
+
+
 def webhook_error(
     request: Request,
     status: int,
     error_type: Literal["unauthorized", "invalid_request", "ingress_unavailable"],
     message: str,
 ) -> JSONResponse:
+    telemetry_for(request).increment(
+        "january_telegram_updates_total", outcome="invalid", transport="webhook"
+    )
     request_id = getattr(request.state, "request_id", "unknown")
     body = WebhookErrorResponse(
         error_type=error_type, message=message, request_id=request_id
@@ -210,6 +220,11 @@ def create_router(settings: Settings) -> APIRouter:
                 "update_type": parsed.update_type,
                 "duplicate": accepted.duplicate,
             },
+        )
+        telemetry_for(request).increment(
+            "january_telegram_updates_total",
+            outcome="duplicate" if accepted.duplicate else "accepted",
+            transport="webhook",
         )
         return WebhookAcknowledgementResponse(duplicate=accepted.duplicate)
 

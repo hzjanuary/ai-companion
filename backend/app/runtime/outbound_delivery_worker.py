@@ -17,6 +17,7 @@ from app.application.ports.platform import (
     SentMessage,
 )
 from app.application.ports.rate_limit import RateLimiter
+from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.rate_limit_rules import delivery_rules
 from app.core.config import Settings
 from app.domain.conversation import MembershipStatus
@@ -55,6 +56,7 @@ from app.infrastructure.telegram.rendering import (
     MentionTarget,
     render_text_with_mentions,
 )
+from app.infrastructure.telemetry import InMemoryMetricsRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,7 @@ async def consume_once(
     database: Database,
     adapter: TelegramAdapter | None = None,
     rate_limiter: RateLimiter | None = None,
+    telemetry: MetricsRecorder | None = None,
 ) -> int:
     if not settings.outbound_delivery_enabled:
         return 0
@@ -86,6 +89,11 @@ async def consume_once(
         else None
     )
     safety_repository = SqlAlchemySafetyRepository(database.session_factory)
+    recorder = telemetry or NoOpMetricsRecorder()
+    for action in actions:
+        recorder.increment(
+            "january_outbound_actions_total", kind=action.kind.value, outcome="claimed"
+        )
     sender = adapter or TelegramAdapter(settings)
     asset_resolver = TelegramStickerAssetResolver(settings)
     try:
@@ -217,6 +225,16 @@ async def consume_once(
                         configuration_version=SafetyPolicyVersion.V1.value,
                     )
                     if not decision.allowed:
+                        recorder.increment(
+                            "january_rate_limit_events_total",
+                            operation="delivery",
+                            scope=(
+                                decision.limiting_scope.value
+                                if decision.limiting_scope is not None
+                                else "unavailable"
+                            ),
+                            result="denied",
+                        )
                         logger.info(
                             "rate_limit_denied operation=delivery "
                             "outbound_action_id=%s scope=%s retry_after_seconds=%s",
@@ -261,10 +279,28 @@ async def consume_once(
                     participants,
                 )
             except PlatformAdapterError as error:
+                recorder.increment(
+                    "january_outbound_actions_total",
+                    kind=action.kind.value,
+                    outcome="unknown"
+                    if error.delivery_certainty == DeliveryCertainty.UNKNOWN
+                    else "failed",
+                )
+                if error.delivery_certainty != DeliveryCertainty.UNKNOWN:
+                    recorder.increment(
+                        "january_telegram_send_failures_total",
+                        kind=action.kind.value,
+                        error_class=error.category.value,
+                    )
                 await _record_error(
                     repository, action.id, owner, action.attempt_count, settings, error
                 )
             else:
+                recorder.increment(
+                    "january_outbound_actions_total",
+                    kind=action.kind.value,
+                    outcome="completed",
+                )
                 await repository.finalize(
                     action.id,
                     owner,
@@ -466,10 +502,13 @@ async def _record_error(
 async def run() -> None:
     settings = Settings()
     database = Database(settings)
+    telemetry = (
+        InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
+    )
     await database.start()
     try:
         while True:
-            if await consume_once(settings, database) == 0:
+            if await consume_once(settings, database, telemetry=telemetry) == 0:
                 await asyncio.sleep(settings.outbound_poll_interval_seconds)
     finally:
         await database.stop()

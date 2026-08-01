@@ -123,3 +123,8 @@ SPEC-014's repository preparation is complete, but its live verification is
 nonproduction OA/application exists. This Zalo-only dependency is outside the
 Telegram MVP critical path; the next implementation specification is SPEC-015
 for accepted Telegram/product work only.
+
+SPEC-015 adds a platform-neutral application telemetry port. Each API or worker
+runtime owns a process-local infrastructure registry; an external collector may
+aggregate replicas. Prometheus-text export is an optional local runtime surface
+and never enters domain/application policy or readiness dependencies.

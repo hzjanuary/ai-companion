@@ -41,6 +41,7 @@ jobs:
       - run: ./scripts/validate.sh
       - run: ./scripts/validate-zalo-feasibility.sh
       - run: ./scripts/validate-zalo-verification.sh
+      - run: ./scripts/validate-observability.sh
       - run: uv run alembic upgrade head
         env:
           JANUARY_ENVIRONMENT: test

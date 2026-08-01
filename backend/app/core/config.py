@@ -1,5 +1,6 @@
 """Typed runtime settings loaded from the environment."""
 
+import json
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse
@@ -24,6 +25,11 @@ class Settings(BaseSettings):
     app_name: str = Field(default="January", min_length=1, max_length=100)
     environment: Literal["local", "test", "staging", "production"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    metrics_enabled: bool = False
+    metrics_export_enabled: bool = False
+    metrics_bind_host: Literal["127.0.0.1", "::1"] = "127.0.0.1"
+    metrics_port: int = Field(default=9464, ge=1, le=65535)
+    metrics_provider_pricing: dict[str, dict[str, int]] = Field(default_factory=dict)
     database_host: str = Field(default="127.0.0.1", min_length=1, max_length=255)
     database_port: int = Field(default=5432, ge=1, le=65535)
     database_name: str = Field(default="january", min_length=1, max_length=63)
@@ -189,6 +195,43 @@ class Settings(BaseSettings):
             )
         return value
 
+    @field_validator("metrics_provider_pricing", mode="before")
+    @classmethod
+    def validate_metrics_provider_pricing(
+        cls, value: object
+    ) -> dict[str, dict[str, int]]:
+        if value is None or value == "":
+            return {}
+        parsed = json.loads(value) if isinstance(value, str) else value
+        if not isinstance(parsed, dict):
+            raise ValueError("metrics_provider_pricing must be a JSON mapping")
+        normalized: dict[str, dict[str, int]] = {}
+        for key, rates in parsed.items():
+            if (
+                not isinstance(key, str)
+                or ":" not in key
+                or not isinstance(rates, dict)
+            ):
+                raise ValueError("pricing keys must be provider:model mappings")
+            input_rate, output_rate = (
+                rates.get("input_microusd_per_million"),
+                rates.get("output_microusd_per_million"),
+            )
+            if (
+                not isinstance(input_rate, int)
+                or not isinstance(output_rate, int)
+                or input_rate < 0
+                or output_rate < 0
+            ):
+                raise ValueError(
+                    "pricing rates must be nonnegative integer micro-USD values"
+                )
+            normalized[key] = {
+                "input_microusd_per_million": input_rate,
+                "output_microusd_per_million": output_rate,
+            }
+        return normalized
+
     @field_validator("demo_allowed_chat_ids", mode="before")
     @classmethod
     def validate_demo_allowed_chat_ids(cls, value: object) -> tuple[str, ...]:
@@ -279,6 +322,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_delivery_configuration(self) -> "Settings":
+        if self.metrics_export_enabled and not self.metrics_enabled:
+            raise ValueError("metrics_export_enabled requires metrics_enabled")
         if self.telegram_enabled and self.telegram_bot_token is None:
             raise ValueError(
                 "telegram_bot_token is required when telegram_enabled is true"

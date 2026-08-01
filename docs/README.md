@@ -39,6 +39,8 @@ and working-memory structure around that truth; it does not install upstream
 - `runbooks/local-development.md`: backend setup, validation, and local runtime.
 - `runbooks/safety-rate-limiting.md`: SPEC-012 deterministic safety and Redis
   limiter operation and validation.
+- `runbooks/observability.md`: SPEC-015 metrics, safe logging, local exporter,
+  pricing estimate, and operator inspection boundary.
 - `platforms/zalo/`: SPEC-013 official-source register, capability matrix,
   parity analysis, and verification-gate decision; no Zalo runtime support.
 - `platforms/zalo/operator-verification-plan.md`: SPEC-014 redacted,

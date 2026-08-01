@@ -156,3 +156,12 @@ JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-memory
 
 The dedicated worker uses PostgreSQL only, applies a maximum 30-day raw-content
 limit in bounded batches, and never calls Telegram or an LLM.
+# Backend
+
+## Observability
+
+Operational telemetry is disabled by default. Set `JANUARY_METRICS_ENABLED=true`
+and `JANUARY_METRICS_EXPORT_ENABLED=true` to start the local loopback-only
+Prometheus-text exporter on `JANUARY_METRICS_BIND_HOST` and
+`JANUARY_METRICS_PORT` (defaults: `127.0.0.1:9464`). See
+`docs/runbooks/observability.md`; no metrics endpoint is exposed by the API.
