@@ -2,6 +2,11 @@ platform: zalo
 researched_at: 2026-08-01
 baseline_commit: 19610622a124c870b292d6595defacf2a23b3fa5
 decision: BLOCKED_PENDING_OFFICIAL_VERIFICATION
+operator_verification_gate:
+  spec: SPEC-014
+  status: BLOCKED
+  operator_live_verification: false
+  notes: "Phase 1 preparation completed without credentialed or external activity; no capability evidence was promoted."
 target_surface: "Potential Zalo OA direct assistant and OA-managed GMF only; excludes ordinary personal/friend groups."
 blockers:
   - id: GMF_SEMANTICS_UNVERIFIED

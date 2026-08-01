@@ -13,5 +13,7 @@ __pycache__/
 .ruff_cache/
 .env
 .env.demo
+.env.zalo-verification.local
+.local/zalo-verification/
 .runtime/
 *.py[cod]

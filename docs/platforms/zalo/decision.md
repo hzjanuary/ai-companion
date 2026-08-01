@@ -7,6 +7,9 @@
 This applies to any January Zalo adapter scope. No production adapter work is
 approved by this spike.
 
+SPEC-014 Phase 1 added a redacted operator verification plan and static guards.
+It did not execute live verification, so the decision remains unchanged.
+
 ## Candidate Scope After The Gate
 
 A narrow **Zalo OA direct assistant** may be useful: users interact with one OA

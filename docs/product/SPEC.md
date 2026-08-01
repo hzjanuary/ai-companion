@@ -1850,6 +1850,7 @@ SPEC-010 Telegram Administration Commands and User Preferences
 SPEC-011 Explicit Memory, Privacy, and Retention Controls
 SPEC-012 Safety Policy and Rate Limiting
 SPEC-013 Zalo Feasibility Spike and Platform Capability Matrix
+SPEC-014 Zalo Operator Verification Gate
 ```
 
 Each SPEC should define:

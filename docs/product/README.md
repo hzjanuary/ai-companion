@@ -29,6 +29,7 @@ contract, implementation, and executable tests.
 - [SPEC-011 Explicit Memory, Privacy, and Retention](specs/SPEC-011-explicit-memory-privacy-retention.md)
 - [SPEC-012 Safety Policy and Distributed Rate Limiting](specs/SPEC-012-safety-policy-and-distributed-rate-limiting.md)
 - [SPEC-013 Zalo Feasibility Spike and Capability Matrix](specs/SPEC-013-zalo-feasibility-spike-and-capability-matrix.md)
+- [SPEC-014 Zalo Operator Verification Gate](specs/SPEC-014-zalo-operator-verification-gate.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Update Rule

@@ -127,6 +127,10 @@ Out of scope:
   durable decision is `BLOCKED_PENDING_OFFICIAL_VERIFICATION`: an OA direct
   assistant may be a narrower future scope, GMF requires test-OA verification,
   and ordinary private friend-group parity is not established.
+- [x] SPEC-014 Phase 1: added redacted, no-network operator-verification
+  artifacts, ignored local-secret boundary, static validator, and CI check.
+  Live verification remains blocked until an operator confirms a dedicated
+  nonproduction OA/app environment and explicitly approves each external gate.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -215,6 +219,17 @@ Out of scope:
   `./scripts/validate-zalo-feasibility.sh` passed the official-source register,
   every required capability ID, closed evidence/product-fit enums, source
   resolution, baseline checkpoint, credential guard, and runtime-scope guard.
+- 2026-08-01 SPEC-014 Phase 1 evidence: current public OA documentation and
+  news index were rechecked; a 30/07/2026 product-update listing did not alter
+  the SPEC-013 conclusion. The canonical results file records every live check
+  as `NOT_RUN`; no credentials, authenticated request, OA/app/GMF mutation,
+  webhook registration, or Zalo message occurred. The next state is
+  `OPERATOR_ZALO_TEST_ENVIRONMENT_REQUIRED`.
+- 2026-08-01 SPEC-014 operator update: no dedicated nonproduction Zalo OA/app
+  is available. Personal Zalo accounts may only be future test participants and
+  are explicitly prohibited as January runtime identity. Credentialed OA,
+  webhook, direct-message, GMF, and commercial checks remain `NOT_RUN`; manual
+  consumer-app observation cannot promote private-group API capability.
 
 - 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
   without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected
