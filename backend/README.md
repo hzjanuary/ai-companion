@@ -77,6 +77,11 @@ Provider keys are `SecretStr` settings and are never required for canonical
 validation. Model capability declarations determine whether JSON Schema output
 is requested; local schema and policy validation remains mandatory.
 
+When enabled, `JANUARY_PROVIDER_CONCURRENCY_*` is a Redis TTL semaphore scoped
+by deployment/provider. It caps in-flight provider I/O, while the existing
+rate limiter caps throughput; both are checked before provider I/O and neither
+blocks privacy or other database-only mutations.
+
 ## Safety And Rate Limits
 
 `response-plan-v2` carries closed interaction metadata and is checked against
@@ -165,3 +170,13 @@ and `JANUARY_METRICS_EXPORT_ENABLED=true` to start the local loopback-only
 Prometheus-text exporter on `JANUARY_METRICS_BIND_HOST` and
 `JANUARY_METRICS_PORT` (defaults: `127.0.0.1:9464`). See
 `docs/runbooks/observability.md`; no metrics endpoint is exposed by the API.
+# Operational recovery
+
+SPEC-016 adds local-only, content-safe inspection with `uv run python -m
+app.runtime.operations inspect`. A single replayable dead letter requires
+`replay --kind <planning|outbound> --id <opaque-id> --confirm`; ambiguous
+Telegram delivery is quarantined and cannot be replayed by this interface.
+
+Provider in-flight concurrency is enabled with
+`JANUARY_PROVIDER_CONCURRENCY_ENABLED=true`, a JSON provider limit map, and a
+TTL lease. It is separate from throughput rate limiting.

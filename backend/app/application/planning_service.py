@@ -42,6 +42,7 @@ async def generate_validated_plan(
 ) -> PlanningGeneration:
     recorder = telemetry or NoOpMetricsRecorder()
     configured_pricing = pricing or {}
+    terminal_provider_error: ProviderError | None = None
     for provider in (primary, fallback):
         if provider is None:
             continue
@@ -88,6 +89,7 @@ async def generate_validated_plan(
                     if error.retryable and attempt + 1 < transport_attempts:
                         await sleep(min(2.0, 0.25 * (2**attempt)))
                         continue
+                    terminal_provider_error = error
                     break
                 recorder.increment(
                     "january_model_requests_total",
@@ -167,6 +169,8 @@ async def generate_validated_plan(
                 continue
         if fallback is None or provider is fallback:
             break
+    if terminal_provider_error is not None:
+        return PlanningGeneration(None, terminal_provider_error, provider)
     return PlanningGeneration(
         None,
         ProviderError(

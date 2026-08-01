@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0009_safety_rate_limiting"
+                        and revision == "0010_operational_recovery"
                     )
         except Exception:
             return False

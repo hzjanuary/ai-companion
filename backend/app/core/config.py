@@ -10,7 +10,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
-from app.domain.planning import StickerIntent
+from app.domain.planning import ProviderId, StickerIntent
 
 
 class Settings(BaseSettings):
@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     rate_limit_delivery_conversation_per_second: int = Field(default=2, ge=1, le=10_000)
     rate_limit_redis_failure_retry_seconds: int = Field(default=5, ge=1, le=300)
     rate_limit_cooldown_notice_seconds: int = Field(default=60, ge=1, le=3600)
+    provider_concurrency_enabled: bool = False
+    provider_concurrency_limits: dict[str, int] = Field(default_factory=dict)
+    provider_concurrency_lease_seconds: int = Field(default=60, ge=5, le=3600)
     ingress_outbox_batch_size: int = Field(default=50, ge=1, le=500)
     ingress_outbox_poll_interval_seconds: float = Field(default=1, gt=0, le=60)
     ingress_event_schema_version: int = Field(default=1, ge=1, le=100)
@@ -231,6 +234,26 @@ class Settings(BaseSettings):
                 "output_microusd_per_million": output_rate,
             }
         return normalized
+
+    @field_validator("provider_concurrency_limits", mode="before")
+    @classmethod
+    def validate_provider_concurrency_limits(cls, value: object) -> dict[str, int]:
+        if value is None or value == "":
+            return {}
+        parsed = json.loads(value) if isinstance(value, str) else value
+        allowed = {provider.value for provider in ProviderId}
+        if (
+            not isinstance(parsed, dict)
+            or set(parsed) - allowed
+            or any(
+                not isinstance(limit, int) or not 1 <= limit <= 10_000
+                for limit in parsed.values()
+            )
+        ):
+            raise ValueError(
+                "provider_concurrency_limits must map supported providers to 1..10000"
+            )
+        return parsed
 
     @field_validator("demo_allowed_chat_ids", mode="before")
     @classmethod

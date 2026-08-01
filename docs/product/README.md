@@ -31,14 +31,14 @@ contract, implementation, and executable tests.
 - [SPEC-013 Zalo Feasibility Spike and Capability Matrix](specs/SPEC-013-zalo-feasibility-spike-and-capability-matrix.md)
 - [SPEC-014 Zalo Operator Verification Gate](specs/SPEC-014-zalo-operator-verification-gate.md)
 - [SPEC-015 Telegram MVP Observability and Operational Telemetry](specs/SPEC-015-telegram-observability-and-operational-telemetry.md)
+- [SPEC-016 Telegram Operational Reliability, Recovery, and Scale](specs/SPEC-016-telegram-operational-reliability-recovery-and-scale.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Roadmap State
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` pending a dedicated
 nonproduction Zalo OA/application. Its outstanding live checks do not block
-the Telegram MVP. SPEC-015 is reserved for Telegram/product work; do not begin
-it until its scope is accepted in the canonical product contract.
+the Telegram MVP. SPEC-016 is the active Telegram reliability track.
 
 ## Update Rule
 

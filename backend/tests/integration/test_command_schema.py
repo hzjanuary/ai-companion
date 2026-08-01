@@ -71,7 +71,7 @@ def test_command_schema_is_current_and_enforces_response_plan_source_xor() -> No
                     await connection.scalar(
                         text("SELECT version_num FROM alembic_version")
                     )
-                    == "0009_safety_rate_limiting"
+                    == "0010_operational_recovery"
                 )
                 constraints = await connection.scalars(
                     text(

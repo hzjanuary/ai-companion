@@ -19,6 +19,13 @@ rate-limit, and worker operation measurements. It never contains text,
 prompts, memory, raw platform IDs, request/correlation IDs, usernames, URLs,
 tokens, secrets, or exception bodies as labels or exposition values.
 
+SPEC-016 adds `january_recovery_events_total`,
+`january_dead_letter_events_total`, `january_quarantine_events_total`, and
+`january_provider_concurrency_events_total`. Their only labels are closed work
+kind, operation/outcome/reason, or provider. They are alert-ready evidence for
+retry exhaustion, quarantine accumulation, and capacity saturation, not a
+production SLO claim.
+
 `request_id` identifies one HTTP request. A correlation ID is a separate opaque
 durable-work root and is logged, never used as a metric label. JSON logs are
 allowlisted operational events and omit product content and credentials.

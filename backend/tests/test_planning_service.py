@@ -143,6 +143,51 @@ def test_safety_refusal_does_not_fallback() -> None:
     assert fallback.calls == 0
 
 
+def test_retry_exhaustion_returns_the_retryable_error_after_bounded_fallback() -> None:
+    value = request()
+    primary_error = ProviderError(
+        ProviderErrorCategory.TRANSPORT,
+        ProviderId.OPENAI,
+        "fake-primary",
+        True,
+        "generate",
+        "safe",
+    )
+    fallback_error = ProviderError(
+        ProviderErrorCategory.RATE_LIMITED,
+        ProviderId.OLLAMA,
+        "fake-fallback",
+        True,
+        "generate",
+        "safe",
+    )
+    primary = FakeProvider(ProviderId.OPENAI, [primary_error, primary_error])
+    fallback = FakeProvider(ProviderId.OLLAMA, [fallback_error, fallback_error])
+    sleeps: list[float] = []
+
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    result = asyncio.run(
+        generate_validated_plan(
+            value,
+            ResponsePlanPolicy(100, frozenset(StickerIntent)),
+            primary,
+            fallback,
+            2,
+            0,
+            sleep,
+        )
+    )
+
+    assert result.candidate is None
+    assert result.provider_error == fallback_error
+    assert result.provider == fallback
+    assert primary.calls == 2
+    assert fallback.calls == 2
+    assert sleeps == [0.25, 0.25]
+
+
 def test_pre_provider_gate_prevents_model_io_and_attempt_recording() -> None:
     value = request()
     primary = FakeProvider(ProviderId.OPENAI, [payload(value)])

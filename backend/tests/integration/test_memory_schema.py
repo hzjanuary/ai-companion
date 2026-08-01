@@ -55,7 +55,7 @@ def test_memory_privacy_retention_schema_is_current() -> None:
             async with database.engine.connect() as connection:
                 assert await connection.scalar(
                     text("SELECT version_num FROM alembic_version")
-                ) == ("0009_safety_rate_limiting")
+                ) == ("0010_operational_recovery")
                 columns = set(
                     await connection.scalars(
                         text(

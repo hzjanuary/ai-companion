@@ -29,6 +29,7 @@ from app.domain.outbound import (
 )
 from app.domain.persistence import AssistantStatus
 from app.domain.rate_limit import RateLimitDecision, RateLimitOperation
+from app.domain.recovery import RecoveryDisposition, RecoveryReason
 from app.domain.safety import (
     SafetyDecision,
     SafetyOutcome,
@@ -293,7 +294,13 @@ async def consume_once(
                         error_class=error.category.value,
                     )
                 await _record_error(
-                    repository, action.id, owner, action.attempt_count, settings, error
+                    repository,
+                    action.id,
+                    owner,
+                    action.attempt_count,
+                    settings,
+                    error,
+                    recorder,
                 )
             else:
                 recorder.increment(
@@ -459,7 +466,9 @@ async def _record_error(
     attempts: int,
     settings: Settings,
     error: PlatformAdapterError,
+    telemetry: MetricsRecorder | None = None,
 ) -> None:
+    recorder = telemetry or NoOpMetricsRecorder()
     code = str(error.telegram_error_code) if error.telegram_error_code else None
     if error.delivery_certainty == DeliveryCertainty.UNKNOWN:
         await repository.finalize(
@@ -470,6 +479,25 @@ async def _record_error(
             DeliveryCertainty.UNKNOWN,
             error_category=error.category.value,
             error_code=code,
+        )
+        classify = getattr(repository, "classify_recovery", None)
+        if classify is not None:
+            await classify(
+                action_id,
+                RecoveryDisposition.QUARANTINE,
+                RecoveryReason.AMBIGUOUS_EXTERNAL_DELIVERY,
+            )
+        recorder.increment(
+            "january_quarantine_events_total",
+            work_kind="outbound",
+            reason="ambiguous_external_delivery",
+        )
+        recorder.increment(
+            "january_recovery_events_total",
+            work_kind="outbound",
+            operation="classify",
+            outcome="quarantine",
+            reason="ambiguous_external_delivery",
         )
         return
     retryable = error.retryable and (
@@ -497,6 +525,26 @@ async def _record_error(
         if retryable
         else None,
     )
+    if not retryable:
+        classify = getattr(repository, "classify_recovery", None)
+        if classify is not None:
+            await classify(
+                action_id,
+                RecoveryDisposition.DEAD_LETTER,
+                RecoveryReason.DELIVERY_REJECTION_EXHAUSTED,
+            )
+        recorder.increment(
+            "january_dead_letter_events_total",
+            work_kind="outbound",
+            reason="delivery_rejection_exhausted",
+        )
+        recorder.increment(
+            "january_recovery_events_total",
+            work_kind="outbound",
+            operation="classify",
+            outcome="dead_letter",
+            reason="delivery_rejection_exhausted",
+        )
 
 
 async def run() -> None:

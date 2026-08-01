@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from app.application.ports.concurrency import ConcurrencyLimiter
 from app.application.ports.rate_limit import RateLimiter
 from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.core.config import Settings
@@ -58,6 +59,10 @@ def rate_limiter_for(request: Request) -> RateLimiter | None:
     return cast(RateLimiter | None, request.app.state.rate_limiter)
 
 
+def concurrency_limiter_for(request: Request) -> ConcurrencyLimiter | None:
+    return cast(ConcurrencyLimiter | None, request.app.state.concurrency_limiter)
+
+
 def telemetry_for(request: Request) -> MetricsRecorder:
     return cast(
         MetricsRecorder, getattr(request.app.state, "telemetry", NoOpMetricsRecorder())
@@ -96,11 +101,20 @@ def create_router(settings: Settings) -> APIRouter:
         queue_ready = await queue_for(request).is_ready() if queue_required else None
         limiter = rate_limiter_for(request)
         limiter_ready = await limiter.is_ready() if limiter is not None else None
+        concurrency = concurrency_limiter_for(request)
+        concurrency_ready = (
+            await concurrency.is_ready() if concurrency is not None else None
+        )
         return HealthResponse(
             service=settings.app_name,
             status=(
                 "ok"
-                if ready and queue_ready is not False and limiter_ready is not False
+                if (
+                    ready
+                    and queue_ready is not False
+                    and limiter_ready is not False
+                    and concurrency_ready is not False
+                )
                 else "degraded"
             ),
             application=DatabaseComponentResponse(status="ok"),
@@ -108,9 +122,17 @@ def create_router(settings: Settings) -> APIRouter:
             redis=DatabaseComponentResponse(
                 status=(
                     "disabled"
-                    if queue_ready is None and limiter_ready is None
+                    if (
+                        queue_ready is None
+                        and limiter_ready is None
+                        and concurrency_ready is None
+                    )
                     else "ok"
-                    if queue_ready is not False and limiter_ready is not False
+                    if (
+                        queue_ready is not False
+                        and limiter_ready is not False
+                        and concurrency_ready is not False
+                    )
                     else "unavailable"
                 )
             ),
@@ -132,6 +154,9 @@ def create_router(settings: Settings) -> APIRouter:
         limiter = rate_limiter_for(request)
         if limiter is not None and not await limiter.is_ready():
             return dependency_unavailable(request, "Redis is unavailable")
+        concurrency = concurrency_limiter_for(request)
+        if concurrency is not None and not await concurrency.is_ready():
+            return dependency_unavailable(request, "Redis is unavailable")
         return ReadinessResponse(
             service=settings.app_name,
             database=DatabaseComponentResponse(status="ok"),
@@ -140,6 +165,7 @@ def create_router(settings: Settings) -> APIRouter:
                     "ok"
                     if settings.telegram_delivery_mode != "disabled"
                     or settings.rate_limit_enabled
+                    or settings.provider_concurrency_enabled
                     else "disabled"
                 )
             ),

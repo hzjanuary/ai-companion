@@ -36,6 +36,17 @@ def test_rate_limit_settings_are_typed_and_bounded(
         Settings(_env_file=None, rate_limit_delivery_conversation_per_second=0)
 
 
+def test_provider_concurrency_settings_are_typed_and_reject_unknown_provider() -> None:
+    settings = Settings(
+        _env_file=None,
+        provider_concurrency_enabled=True,
+        provider_concurrency_limits='{"openai": 2}',
+    )
+    assert settings.provider_concurrency_limits == {"openai": 2}
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, provider_concurrency_limits='{"unknown": 2}')
+
+
 def test_command_settings_validate_retry_bounds_and_limits() -> None:
     settings = Settings(_env_file=None, command_max_argument_length=500)
     assert settings.command_max_argument_length == 500

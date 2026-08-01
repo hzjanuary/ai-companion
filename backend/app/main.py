@@ -7,9 +7,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.application.ports.concurrency import ConcurrencyLimiter
 from app.application.ports.telemetry import NoOpMetricsRecorder
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.infrastructure.concurrency import RedisConcurrencyLimiter
 from app.infrastructure.database.database import Database
 from app.infrastructure.queue.redis_streams import RedisIngressQueue
 from app.infrastructure.rate_limit import RedisRateLimiter
@@ -36,6 +38,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if configured_settings.rate_limit_enabled
         else None
     )
+    concurrency_limiter: ConcurrencyLimiter | None = (
+        RedisConcurrencyLimiter(configured_settings)
+        if configured_settings.provider_concurrency_enabled
+        else None
+    )
     telemetry = (
         InMemoryMetricsRecorder()
         if configured_settings.metrics_enabled
@@ -58,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.telegram = telegram
         app.state.ingress_queue = queue
         app.state.rate_limiter = rate_limiter
+        app.state.concurrency_limiter = concurrency_limiter
         app.state.telemetry = telemetry
         app.state.metrics_exporter = metrics_exporter
         if metrics_exporter is not None:
@@ -70,6 +78,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await queue.aclose()
             if rate_limiter is not None:
                 await rate_limiter.aclose()
+            if concurrency_limiter is not None:
+                await concurrency_limiter.aclose()
             if metrics_exporter is not None:
                 await metrics_exporter.close()
             await database.stop()
@@ -83,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.telegram = telegram
     app.state.ingress_queue = queue
     app.state.rate_limiter = rate_limiter
+    app.state.concurrency_limiter = concurrency_limiter
     app.state.telemetry = telemetry
     app.state.metrics_exporter = metrics_exporter
     app.add_middleware(RequestIdMiddleware)

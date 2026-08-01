@@ -4,7 +4,8 @@ Date: 2026-07-29
 
 ## Status
 
-Active: SPEC-015 Telegram observability track. SPEC-014 is `DEFERRED /
+Active: SPEC-016 Telegram operational reliability, recovery, and scale
+verification track. SPEC-014 is `DEFERRED /
 BLOCKED_ON_EXTERNAL_PREREQUISITE` and is not the active project blocker.
 
 ## Outcome
@@ -135,8 +136,54 @@ Out of scope:
   nonproduction OA/app environment and explicitly approves each external gate.
   This Zalo-only dependency is outside the Telegram MVP critical path.
 - [x] SPEC-015: Telegram MVP observability and operational telemetry completed.
-  Preserve all prior behavior while adding only content-safe, bounded telemetry;
-  no migration, Zalo runtime, or SPEC-016 scope is permitted.
+- [x] SPEC-016: schema audit completed. Existing fields cannot represent generic
+  content-free dead-letter/quarantine disposition, replay eligibility, replay
+  history, and safe one-item recovery, so authorized migration
+  `0010_operational_recovery` is required. Recovery implementation and full
+  reliability/scalability evidence: `validate.sh` passed 152 selected tests;
+  `validate-db.sh` passed 24 integration tests, including PostgreSQL
+  one-winner concurrent replay/quarantine-refusal and same-conversation
+  advisory-lock/cross-conversation-progress proofs, and proved `head -> base ->
+  head`, including `0010 -> 0009`; focused reliability and scale gates passed
+  36 no-network tests plus a two independently-composed Redis provider-limiter
+  proof with stale-token recovery; a synthetic PostgreSQL `pg_dump`/fresh-database
+  restore rehearsal verified migration revision, assistant/connection/conversation
+  relationships, redaction marker, delivered-action idempotency, safety/rate,
+  and dead-letter/quarantine state; Docker built and Compose endpoints `/`, `/health`,
+  `/live`, `/ready`, and `/docs` returned 200 after migration head. Full
+  multi-worker coverage now includes a local PostgreSQL/Redis synthetic ingress
+  burst: two dispatcher/consumer instances accepted 16 unique messages across
+  four conversations while 16 raced duplicates produced one durable record each
+  and zero duplicate terminal effects. A second synthetic scenario used two
+  independently composed planning and outbound repositories to claim 12 jobs
+  and 12 actions exactly once each, then used two outbound workers against a
+  shared fake Telegram adapter to confirm exactly 12 deliveries and zero
+  duplicate terminal effects. A blocking fake provider confirmed a shared
+  OpenAI pool saturates at one in-flight request while the Groq fallback pool
+  progresses independently. The remaining failure-matrix expansion remains in
+  progress: existing executable evidence covers dispatcher crash/reclaim,
+  ingress duplicate safety, outbound known rejection and ambiguous stale lease,
+  PostgreSQL readiness failure, Redis limiter failure, recovery replay race,
+  and Redis concurrency TTL recovery. Completed and active-lease replay refusal
+  are covered by the PostgreSQL recovery test. Provider retry exhaustion now
+  preserves the terminal retryable category after bounded primary/fallback
+  attempts, so the worker classifies it as `provider_retry_exhausted`; a
+  deterministic limiter restoration test proves unavailable coordination makes
+  no provider I/O and a recovered limiter resumes it. Current
+  Docker proof rebuilt `january-backend:spec-016`, applied migration head in the
+  container, returned 200 for all operational endpoints, then removed all
+  project services and volumes;
+  the dedicated reliability validator now invokes the focused ingress,
+  conversation, planning, delivery, command/privacy, memory, and safety
+  validators in addition to recovery, Redis concurrency, and backup/restore.
+  Its recovery proof also races one replay against a normal planning claim and
+  permits at most one normal continuation. A current full-regression pass has
+  completed canonical validation, database lifecycle, scale, ingress,
+  conversation, planning, delivery, and demo validators after this change;
+  command/privacy/safety completion passed, as did personality, observability,
+  and both static Zalo validators. This is an implementation-complete approval
+  candidate; it is not product-owner approval.
+  SPEC-014 remains deferred.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -166,6 +213,24 @@ Out of scope:
   remains outside claim transactions and does not imply exactly-once generation.
 
 ## Validation
+
+- 2026-08-01 SPEC-016 current focused evidence: `./scripts/validate.sh`
+  passed 156 selected no-network tests with Ruff, formatting, strict mypy,
+  Harness checks, and `git diff --check`. `JANUARY_DB_HOST_PORT=5433
+  ./scripts/validate-db.sh` passed 26 PostgreSQL integrations and the full
+  migration lifecycle from `0010` to base and back. The recovery inspector now
+  reports only per-kind state, oldest pending age, active/stale lease, and
+  dead-letter/quarantine counts; its PostgreSQL proof verifies no seeded
+  message content appears in the serialized result. Provider retry exhaustion
+  is bounded across primary and fallback, retains the terminal retryable error,
+  and makes the worker's durable recovery classification unambiguous.
+  The recovery integration fixture truncates its independent recovery tables as
+  well as application state, so it remains repeatable after validators that
+  leave historical recovery rows. `docker build --tag january-backend:spec-016
+  .` and `docker compose config` passed; a fresh Compose stack applied migration
+  `0010` in the backend container, then `/`, `/health`, `/live`, `/ready`, and
+  `/docs` each returned HTTP 200 on port 8016. `docker compose down -v` left no
+  project services or volume.
 
 - 2026-08-01 SPEC-011 final evidence: `./scripts/validate.sh` passed 136
   selected no-network tests, Ruff lint/format, strict mypy, Harness checks, and

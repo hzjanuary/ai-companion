@@ -18,6 +18,7 @@ class ProviderErrorCategory(StrEnum):
     INVALID_REQUEST = "invalid_request"
     UNSUPPORTED_CAPABILITY = "unsupported_capability"
     RATE_LIMITED = "rate_limited"
+    CONCURRENCY_LIMITED = "concurrency_limited"
     TIMEOUT = "timeout"
     TRANSPORT = "transport"
     PROVIDER_UNAVAILABLE = "provider_unavailable"

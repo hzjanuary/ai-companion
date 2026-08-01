@@ -64,6 +64,7 @@ from app.domain.planning import (
     StickerIntent,
 )
 from app.domain.rate_limit import RateLimitOperation, RateLimitScope
+from app.domain.recovery import RecoveryDisposition, RecoveryKind, RecoveryReason
 from app.domain.safety import (
     InteractionKind,
     SafetyOutcome,
@@ -864,6 +865,40 @@ class OutboundRecoveryEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     outbound_action_id: Mapped[UUID] = mapped_column(
         ForeignKey("outbound_actions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class OperationalRecoveryItemModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Generic recovery classification; deliberately contains no business content."""
+
+    __tablename__ = "operational_recovery_items"
+    __table_args__ = (
+        UniqueConstraint("work_kind", "work_id"),
+        Index("ix_operational_recovery_items_disposition", "disposition", "created_at"),
+    )
+
+    work_kind: Mapped[RecoveryKind] = mapped_column(
+        string_enum(RecoveryKind, "recovery_work_kind"), nullable=False
+    )
+    work_id: Mapped[UUID] = mapped_column(nullable=False)
+    disposition: Mapped[RecoveryDisposition] = mapped_column(
+        string_enum(RecoveryDisposition, "recovery_disposition"), nullable=False
+    )
+    reason: Mapped[RecoveryReason] = mapped_column(
+        string_enum(RecoveryReason, "recovery_reason"), nullable=False
+    )
+    replayed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OperationalRecoveryEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "operational_recovery_events"
+
+    recovery_item_id: Mapped[UUID] = mapped_column(
+        ForeignKey("operational_recovery_items.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )

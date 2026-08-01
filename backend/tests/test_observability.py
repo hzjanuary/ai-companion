@@ -44,6 +44,32 @@ def test_registry_isolated_and_rejects_high_cardinality_labels() -> None:
         )
 
 
+def test_recovery_and_concurrency_metrics_use_only_bounded_labels() -> None:
+    recorder = InMemoryMetricsRecorder()
+    recorder.increment(
+        "january_recovery_events_total",
+        work_kind="planning",
+        operation="replay",
+        outcome="accepted",
+        reason="operator_replay",
+    )
+    recorder.increment(
+        "january_provider_concurrency_events_total",
+        provider="openai",
+        outcome="denied",
+    )
+    assert "january_recovery_events_total" in recorder.exposition()
+    with pytest.raises(ValueError, match="prohibited"):
+        recorder.increment(
+            "january_recovery_events_total",
+            work_kind="planning",
+            operation="replay",
+            outcome="accepted",
+            reason="operator_replay",
+            planning_job_id="unsafe",
+        )
+
+
 def test_usage_cost_is_reported_or_unknown_without_fabrication() -> None:
     recorder = InMemoryMetricsRecorder()
     record_provider_usage(

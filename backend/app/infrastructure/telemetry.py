@@ -95,6 +95,18 @@ METRICS: Final[dict[str, MetricDefinition]] = {
     "january_rate_limit_events_total": MetricDefinition(
         "counter", frozenset({"operation", "scope", "result"})
     ),
+    "january_recovery_events_total": MetricDefinition(
+        "counter", frozenset({"work_kind", "operation", "outcome", "reason"})
+    ),
+    "january_dead_letter_events_total": MetricDefinition(
+        "counter", frozenset({"work_kind", "reason"})
+    ),
+    "january_quarantine_events_total": MetricDefinition(
+        "counter", frozenset({"work_kind", "reason"})
+    ),
+    "january_provider_concurrency_events_total": MetricDefinition(
+        "counter", frozenset({"provider", "outcome"})
+    ),
     "january_worker_operations_total": MetricDefinition(
         "counter", frozenset({"runtime", "operation", "outcome"})
     ),

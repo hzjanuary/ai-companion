@@ -8,6 +8,7 @@ from uuid import UUID
 from app.application.model_provider import ModelProvider, ProviderError
 from app.application.personality import merge_effective
 from app.application.planning_service import generate_validated_plan
+from app.application.ports.concurrency import ConcurrencyLimiter
 from app.application.ports.rate_limit import RateLimiter
 from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.prompting import build_generation_request
@@ -22,6 +23,7 @@ from app.domain.planning import (
     StickerIntent,
 )
 from app.domain.rate_limit import RateLimitDecision, RateLimitOperation
+from app.domain.recovery import RecoveryDisposition, RecoveryKind, RecoveryReason
 from app.domain.safety import (
     SafetyDecision,
     SafetyOutcome,
@@ -29,6 +31,8 @@ from app.domain.safety import (
     SafetyReasonCode,
     SafetyStage,
 )
+from app.infrastructure.concurrency import RedisConcurrencyLimiter
+from app.infrastructure.concurrency_provider import ConcurrencyLimitedProvider
 from app.infrastructure.database.context import SqlAlchemyConversationContextReader
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
@@ -39,6 +43,7 @@ from app.infrastructure.database.models import (
 )
 from app.infrastructure.database.personality import revision_overrides, version_values
 from app.infrastructure.database.planning import SqlAlchemyPlanningRepository
+from app.infrastructure.database.recovery import SqlAlchemyRecoveryRepository
 from app.infrastructure.database.safety import SqlAlchemySafetyRepository
 from app.infrastructure.model_providers import create_model_provider
 from app.infrastructure.rate_limit import RateLimitUnavailable, RedisRateLimiter
@@ -58,6 +63,7 @@ async def consume_once(
     primary_provider: ModelProvider | None = None,
     fallback_provider: ModelProvider | None = None,
     rate_limiter: RateLimiter | None = None,
+    concurrency_limiter: ConcurrencyLimiter | None = None,
     telemetry: MetricsRecorder | None = None,
 ) -> int:
     if not settings.llm_enabled:
@@ -74,11 +80,21 @@ async def consume_once(
     lease_owner = owner or worker_name(settings)
     owns_providers = primary_provider is None
     owns_limiter = rate_limiter is None and settings.rate_limit_enabled
+    owns_concurrency = (
+        concurrency_limiter is None and settings.provider_concurrency_enabled
+    )
     limiter = (
         rate_limiter
         if rate_limiter is not None
         else RedisRateLimiter(settings)
         if settings.rate_limit_enabled
+        else None
+    )
+    concurrency = (
+        concurrency_limiter
+        if concurrency_limiter is not None
+        else RedisConcurrencyLimiter(settings)
+        if settings.provider_concurrency_enabled
         else None
     )
     safety_repository = SqlAlchemySafetyRepository(database.session_factory)
@@ -93,6 +109,10 @@ async def consume_once(
         if settings.llm_fallback_provider
         else None
     )
+    if concurrency is not None:
+        primary = ConcurrencyLimitedProvider(primary, concurrency, recorder)
+        if fallback is not None:
+            fallback = ConcurrencyLimitedProvider(fallback, concurrency, recorder)
     try:
         for job in claimed:
             context = await context_reader.build_for_message(job.message_id)
@@ -395,6 +415,17 @@ async def consume_once(
                     settings.rate_limit_redis_failure_retry_seconds,
                 )
                 continue
+            if (
+                outcome.provider_error is not None
+                and outcome.provider_error.category
+                == ProviderErrorCategory.CONCURRENCY_LIMITED
+            ):
+                await repository.release_for_rate_limit(
+                    job.id,
+                    lease_owner,
+                    settings.rate_limit_redis_failure_retry_seconds,
+                )
+                continue
             response_plan_id = await repository.complete(
                 job.id,
                 lease_owner,
@@ -405,6 +436,35 @@ async def consume_once(
                 job.prompt_version,
                 job.response_schema_version,
             )
+            if outcome.candidate is None and outcome.provider_error is not None:
+                await SqlAlchemyRecoveryRepository(database.session_factory).classify(
+                    RecoveryKind.PLANNING,
+                    job.id,
+                    RecoveryDisposition.DEAD_LETTER,
+                    RecoveryReason.PROVIDER_RETRY_EXHAUSTED
+                    if outcome.provider_error.retryable
+                    else RecoveryReason.INVALID_TERMINAL_PLAN,
+                )
+                recorder.increment(
+                    "january_dead_letter_events_total",
+                    work_kind="planning",
+                    reason=(
+                        "provider_retry_exhausted"
+                        if outcome.provider_error.retryable
+                        else "invalid_terminal_plan"
+                    ),
+                )
+                recorder.increment(
+                    "january_recovery_events_total",
+                    work_kind="planning",
+                    operation="classify",
+                    outcome="dead_letter",
+                    reason=(
+                        "provider_retry_exhausted"
+                        if outcome.provider_error.retryable
+                        else "invalid_terminal_plan"
+                    ),
+                )
             await safety_repository.record_decision(
                 planning_job_id=job.id,
                 response_plan_id=response_plan_id,
@@ -432,6 +492,8 @@ async def consume_once(
                 await fallback.aclose()
         if owns_limiter and limiter is not None:
             await limiter.aclose()
+        if owns_concurrency and concurrency is not None:
+            await concurrency.aclose()
 
 
 async def run() -> None:

@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -140,6 +140,17 @@ class SqlAlchemyConversationProcessor:
         incoming, connection, assistant = await self._validate_ingress(session, event)
         if normalized.conversation.platform_connection_id != connection.id:
             raise ConversationProcessingError("normalized connection mismatch")
+        # PostgreSQL transaction advisory locks serialize a conversation/topic across
+        # worker processes without surviving a crash or spanning provider I/O.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+            {
+                "identity": (
+                    f"{connection.id}:"
+                    f"{normalized.conversation.platform_conversation_id}"
+                ),
+            },
+        )
         conversation = await self._upsert_conversation(session, normalized)
         configuration = await ensure_conversation_configuration(
             session, assistant, conversation, stickers_enabled=self._stickers_enabled

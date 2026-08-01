@@ -128,3 +128,12 @@ SPEC-015 adds a platform-neutral application telemetry port. Each API or worker
 runtime owns a process-local infrastructure registry; an external collector may
 aggregate replicas. Prometheus-text export is an optional local runtime surface
 and never enters domain/application policy or readiness dependencies.
+
+SPEC-016 preserves the same direction: recovery vocabulary and concurrency
+ports are inner contracts, while PostgreSQL recovery history, transaction
+advisory ordering locks, and Redis TTL provider leases remain infrastructure.
+PostgreSQL serializes durable processing of one conversation/topic only within
+its business transaction; no lock spans provider or Telegram I/O. Recovery
+history contains opaque internal work IDs and closed classes only. A generic
+dead letter can re-enter normal scheduling once; a quarantine, including an
+ambiguous Telegram delivery, is intentionally not generically replayable.

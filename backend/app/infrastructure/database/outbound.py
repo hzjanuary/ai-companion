@@ -16,9 +16,12 @@ from app.domain.persistence import (
     MessageProcessingStatus,
     MessageType,
 )
+from app.domain.recovery import RecoveryDisposition, RecoveryKind, RecoveryReason
 from app.infrastructure.database.models import (
     ConversationModel,
     MessageModel,
+    OperationalRecoveryEventModel,
+    OperationalRecoveryItemModel,
     OutboundActionModel,
     OutboundDeliveryAttemptModel,
     OutboundRecoveryEventModel,
@@ -100,6 +103,31 @@ class SqlAlchemyOutboundRepository:
                             attempt.certainty = DeliveryCertainty.UNKNOWN
                             attempt.error_category = "lease_expired"
                             attempt.finished_at = now
+                            recovery = await session.scalar(
+                                select(OperationalRecoveryItemModel)
+                                .where(
+                                    OperationalRecoveryItemModel.work_kind
+                                    == RecoveryKind.OUTBOUND,
+                                    OperationalRecoveryItemModel.work_id == action.id,
+                                )
+                                .with_for_update()
+                            )
+                            if recovery is None:
+                                recovery = OperationalRecoveryItemModel(
+                                    work_kind=RecoveryKind.OUTBOUND,
+                                    work_id=action.id,
+                                    disposition=RecoveryDisposition.QUARANTINE,
+                                    reason=RecoveryReason.AMBIGUOUS_EXTERNAL_DELIVERY,
+                                )
+                                session.add(recovery)
+                                await session.flush()
+                            session.add(
+                                OperationalRecoveryEventModel(
+                                    recovery_item_id=recovery.id,
+                                    event_type="classified",
+                                    actor="runtime",
+                                )
+                            )
                         else:
                             action.status = OutboundActionStatus.PENDING
                             action.lease_owner = None
@@ -280,3 +308,36 @@ class SqlAlchemyOutboundRepository:
                     )
                 )
                 return True
+
+    async def classify_recovery(
+        self,
+        action_id: UUID,
+        disposition: RecoveryDisposition,
+        reason: RecoveryReason,
+    ) -> None:
+        async with self._session_factory() as session:
+            async with session.begin():
+                item = await session.scalar(
+                    select(OperationalRecoveryItemModel)
+                    .where(
+                        OperationalRecoveryItemModel.work_kind == RecoveryKind.OUTBOUND,
+                        OperationalRecoveryItemModel.work_id == action_id,
+                    )
+                    .with_for_update()
+                )
+                if item is None:
+                    item = OperationalRecoveryItemModel(
+                        work_kind=RecoveryKind.OUTBOUND,
+                        work_id=action_id,
+                        disposition=disposition,
+                        reason=reason,
+                    )
+                    session.add(item)
+                    await session.flush()
+                session.add(
+                    OperationalRecoveryEventModel(
+                        recovery_item_id=item.id,
+                        event_type="classified",
+                        actor="runtime",
+                    )
+                )

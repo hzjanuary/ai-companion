@@ -1852,6 +1852,7 @@ SPEC-012 Safety Policy and Rate Limiting
 SPEC-013 Zalo Feasibility Spike and Platform Capability Matrix
 SPEC-014 Zalo Operator Verification Gate
 SPEC-015 Telegram MVP Observability and Operational Telemetry
+SPEC-016 Telegram Operational Reliability, Recovery, and Scale Verification
 ```
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`: its Phase 1
@@ -1859,6 +1860,8 @@ preparation is complete, while credentialed verification waits for an
 operator-owned dedicated nonproduction OA/application. This Zalo-only gate is
 not on the Telegram MVP critical path. The next implementation number is
 SPEC-015 is accepted Telegram MVP observability and operational telemetry work.
+SPEC-016 is the active Telegram reliability, recovery, and scale-verification
+track; SPEC-014 remains deferred and no Zalo runtime is authorized.
 
 Each SPEC should define:
 
