@@ -39,6 +39,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --all-groups --locked
       - run: ./scripts/validate.sh
+      - run: ./scripts/validate-zalo-feasibility.sh
       - run: uv run alembic upgrade head
         env:
           JANUARY_ENVIRONMENT: test

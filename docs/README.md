@@ -39,6 +39,8 @@ and working-memory structure around that truth; it does not install upstream
 - `runbooks/local-development.md`: backend setup, validation, and local runtime.
 - `runbooks/safety-rate-limiting.md`: SPEC-012 deterministic safety and Redis
   limiter operation and validation.
+- `platforms/zalo/`: SPEC-013 official-source register, capability matrix,
+  parity analysis, and verification-gate decision; no Zalo runtime support.
 - `plans/active/telegram-social-ai-mvp.md`: durable MVP execution plan.
 - `decisions/0001-backend-bootstrap-boundaries.md`: accepted bootstrap architecture decision.
 - `product/specs/SPEC-002-database-and-persistence.md`: accepted persistence

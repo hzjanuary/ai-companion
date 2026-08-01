@@ -110,3 +110,10 @@ Redis is an infrastructure implementation of atomic multi-scope coordination;
 enabled coordination is required for provider and Telegram I/O, while command
 and privacy database mutations remain independent. Content-free PostgreSQL
 decision records and the inspector expose policy state without unsafe content.
+
+SPEC-013 verifies only that Zalo OA, OA messaging, GMF, and webhook are distinct
+official product surfaces. Zalo runtime work remains deferred pending dedicated
+test OA/app verification of auth, webhook, and GMF semantics. The core remains
+platform-neutral; Telegram-specific assumptions, candidate schema risks, and
+reusable boundaries are documented in `docs/platforms/zalo/` without adding a
+platform enum, adapter, migration, or runtime dependency.

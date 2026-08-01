@@ -122,6 +122,11 @@ Out of scope:
   scopes and delivery deployment/connection/conversation scopes. Enabled Redis
   failure fails closed and retryable work is released without external I/O;
   database-only commands retain their generation-quota exemption.
+- [x] SPEC-013: official-source-only Zalo OA/GMF feasibility spike completed
+  without runtime code, credentials, migration, or external mutation. The
+  durable decision is `BLOCKED_PENDING_OFFICIAL_VERIFICATION`: an OA direct
+  assistant may be a narrower future scope, GMF requires test-OA verification,
+  and ordinary private friend-group parity is not established.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -200,6 +205,16 @@ Out of scope:
   before every selected provider, including a fallback, with a focused fake
   provider proof that denial creates no provider I/O or attempt record. Successful
   post-generation decisions now retain their persisted response-plan ID.
+- 2026-08-01 SPEC-013 evidence: public official Zalo Developers/OA sources were
+  registered with access state and caveats. `validate-zalo-feasibility.sh`
+  validates every required capability, source reference, enum, baseline SHA,
+  credential guard, and absence of runtime/migration scope changes without
+  network access. Manual OA/app/GMF verification was documented and not run.
+- 2026-08-01 SPEC-013 validation: `./scripts/validate.sh` passed 145 selected
+  no-network tests with Ruff, formatting, strict mypy, Harness, and diff checks.
+  `./scripts/validate-zalo-feasibility.sh` passed the official-source register,
+  every required capability ID, closed evidence/product-fit enums, source
+  resolution, baseline checkpoint, credential guard, and runtime-scope guard.
 
 - 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
   without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected

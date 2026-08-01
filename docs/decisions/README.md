@@ -23,3 +23,4 @@ documents here as real choices are accepted, then index them in this file.
 - [0010 Telegram Command Jobs and Fresh Authorization](0010-telegram-command-jobs-and-fresh-authorization.md)
 - [0011 Explicit Memory and Physical Redaction](0011-explicit-memory-and-physical-redaction.md)
 - [0012 Safety Policy and Distributed Rate Limiting](0012-safety-policy-and-distributed-rate-limiting.md)
+- [0013 Zalo Feasibility Verification Gate](0013-zalo-feasibility-verification-gate.md)
