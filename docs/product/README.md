@@ -32,6 +32,13 @@ contract, implementation, and executable tests.
 - [SPEC-014 Zalo Operator Verification Gate](specs/SPEC-014-zalo-operator-verification-gate.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
+## Roadmap State
+
+SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` pending a dedicated
+nonproduction Zalo OA/application. Its outstanding live checks do not block
+the Telegram MVP. SPEC-015 is reserved for Telegram/product work; do not begin
+it until its scope is accepted in the canonical product contract.
+
 ## Update Rule
 
 When behavior changes:

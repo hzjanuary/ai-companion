@@ -7,6 +7,11 @@
 This applies to any January Zalo adapter scope. No production adapter work is
 approved by this spike.
 
+SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`, not an active
+Telegram MVP blocker. Its remaining credentialed checks resume only when an
+operator-owned dedicated nonproduction OA/application is available; they do not
+block Telegram/product work under SPEC-015 or later accepted Telegram slices.
+
 SPEC-014 Phase 1 added a redacted operator verification plan and static guards.
 It did not execute live verification, so the decision remains unchanged.
 

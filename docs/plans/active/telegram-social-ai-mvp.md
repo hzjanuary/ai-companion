@@ -4,7 +4,8 @@ Date: 2026-07-29
 
 ## Status
 
-Active
+Active: Telegram MVP track. SPEC-014 is `DEFERRED /
+BLOCKED_ON_EXTERNAL_PREREQUISITE` and is not the active project blocker.
 
 ## Outcome
 
@@ -129,8 +130,12 @@ Out of scope:
   and ordinary private friend-group parity is not established.
 - [x] SPEC-014 Phase 1: added redacted, no-network operator-verification
   artifacts, ignored local-secret boundary, static validator, and CI check.
-  Live verification remains blocked until an operator confirms a dedicated
+  Its credentialed live verification is `DEFERRED /
+  BLOCKED_ON_EXTERNAL_PREREQUISITE` until an operator confirms a dedicated
   nonproduction OA/app environment and explicitly approves each external gate.
+  This Zalo-only dependency is outside the Telegram MVP critical path.
+- [ ] SPEC-015: Telegram/product work only; scope remains pending acceptance in
+  the canonical product contract. Do not implement it yet.
 - [ ] Later MVP specifications.
 
 ## Decisions
@@ -230,6 +235,13 @@ Out of scope:
   are explicitly prohibited as January runtime identity. Credentialed OA,
   webhook, direct-message, GMF, and commercial checks remain `NOT_RUN`; manual
   consumer-app observation cannot promote private-group API capability.
+- 2026-08-01 SPEC-014 roadmap decision: the gate is
+  `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`, not the active Telegram MVP
+  blocker. `./scripts/validate.sh` passed 145 selected no-network tests, Ruff,
+  strict mypy, Harness, and diff checks; `./scripts/validate-zalo-feasibility.sh`
+  and `./scripts/validate-zalo-verification.sh` both passed. The next reserved
+  implementation number is SPEC-015 for Telegram/product work only, with scope
+  pending product-contract acceptance.
 
 - 2026-07-30 SPEC-001 validation-entrypoint follow-up: from a clean shell
   without a `.tools` PATH mutation, `./scripts/validate.sh` passed 116 selected

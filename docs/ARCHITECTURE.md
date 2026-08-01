@@ -117,3 +117,9 @@ test OA/app verification of auth, webhook, and GMF semantics. The core remains
 platform-neutral; Telegram-specific assumptions, candidate schema risks, and
 reusable boundaries are documented in `docs/platforms/zalo/` without adding a
 platform enum, adapter, migration, or runtime dependency.
+
+SPEC-014's repository preparation is complete, but its live verification is
+`DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` until an operator-owned dedicated
+nonproduction OA/application exists. This Zalo-only dependency is outside the
+Telegram MVP critical path; the next implementation specification is SPEC-015
+for accepted Telegram/product work only.
