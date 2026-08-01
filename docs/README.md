@@ -44,6 +44,7 @@ and working-memory structure around that truth; it does not install upstream
 - `runbooks/recovery.md`: SPEC-016 dead-letter/quarantine and one-item replay.
 - `runbooks/backup-restore.md`: PostgreSQL authoritative backup rehearsal.
 - `runbooks/deployment.md`: local deployment/restart safety order.
+- `runbooks/ambient-participation.md`: SPEC-017 opt-in ambient policy and rollback.
 - `platforms/zalo/`: SPEC-013 official-source register, capability matrix,
   parity analysis, and verification-gate decision; no Zalo runtime support.
 - `platforms/zalo/operator-verification-plan.md`: SPEC-014 redacted,

@@ -254,6 +254,8 @@ class SqlAlchemyCommandRepository:
                 same = (
                     response_mode == current.response_mode
                     and stickers_enabled == current.stickers_enabled
+                    and (change.ambient_frequency or current.ambient_frequency)
+                    == current.ambient_frequency
                     and profile_version_id == current.personality_profile_version_id
                 )
                 if same:
@@ -281,6 +283,8 @@ class SqlAlchemyCommandRepository:
                     personality_profile_version_id=profile_version_id,
                     response_mode=response_mode,
                     stickers_enabled=stickers_enabled,
+                    ambient_frequency=change.ambient_frequency
+                    or current.ambient_frequency,
                     default_length=current.default_length,
                     formality=current.formality,
                     humor_level=current.humor_level,

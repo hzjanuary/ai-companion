@@ -13,6 +13,7 @@ from app.application.conversation import (
     evaluate_eligibility,
 )
 from app.application.ingress import IngressQueueEvent
+from app.domain.ambient import AMBIENT_POLICY_VERSION, ParticipationTrigger
 from app.domain.conversation import (
     EligibilityDecision,
     EligibilityReason,
@@ -275,6 +276,12 @@ class SqlAlchemyConversationProcessor:
                     response_schema_version=self._response_schema_version,
                     personality_profile_version_id=configuration.personality_profile_version_id,
                     configuration_revision_id=configuration.id,
+                    trigger=decision.trigger or ParticipationTrigger.ADDRESSED,
+                    ambient_policy_version=(
+                        AMBIENT_POLICY_VERSION
+                        if decision.trigger == ParticipationTrigger.AMBIENT
+                        else None
+                    ),
                 )
             )
             await session.flush()

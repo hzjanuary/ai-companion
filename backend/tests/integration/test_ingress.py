@@ -11,6 +11,7 @@ from app.application.model_provider import ProviderResult, ProviderUsage
 from app.application.personality import PersonalityOverrides
 from app.application.ports.platform import PlatformCapability, SentMessage, WebhookInfo
 from app.core.config import Settings
+from app.domain.ambient import ParticipationTrigger
 from app.domain.persistence import (
     IncomingUpdateStatus,
     IngressOutboxStatus,
@@ -663,6 +664,88 @@ def test_polling_uses_persisted_cursor_and_refuses_configured_webhook() -> None:
                 configured, database, FakeAdapter("https://example.invalid")
             )  # type: ignore[arg-type]
         await clear(database)
+        await database.stop()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+@pytest.mark.ingress_integration
+@pytest.mark.conversation_integration
+@pytest.mark.planning_integration
+def test_disabled_ambient_job_completes_without_provider_io(settings: Settings) -> None:
+    class FakeProvider:
+        provider_id = ProviderId.OLLAMA
+        model = "fake-model"
+        capabilities = None
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate(self, _: object) -> object:
+            self.calls += 1
+            raise AssertionError("disabled ambient work must not reach the provider")
+
+        async def aclose(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        database = Database(settings)
+        queue = RedisIngressQueue(settings)
+        await database.start()
+        await clear(database, queue)
+        connection_id = await seed_connection(database)
+        repository = SqlAlchemyDurableIngressRepository(database.session_factory, 1)
+        await repository.accept(envelope(connection_id, "5000000100"))
+        assert await dispatch_once(settings, repository, queue) == 1
+        processor = SqlAlchemyConversationProcessor(database.session_factory)
+        assert (
+            await consume_once(settings, database, queue, processor, "ambient-source")
+            == 1
+        )
+        async with database.session_factory() as session:
+            job = await session.scalar(select(ResponsePlanningJobModel))
+            assert job is not None
+            conversation = await session.get(ConversationModel, job.conversation_id)
+            assert conversation is not None
+            connection = await session.get(
+                PlatformConnectionModel, conversation.platform_connection_id
+            )
+            assert connection is not None
+            job.trigger = ParticipationTrigger.AMBIENT
+            job.ambient_policy_version = "ambient-policy-v1"
+            conversation_id = conversation.id
+            assistant_id = connection.assistant_id
+            await session.commit()
+        await SqlAlchemyGroupConfigurationService(database.session_factory).apply(
+            conversation_id,
+            assistant_id,
+            ConfigurationChange(response_mode=ResponseMode.AMBIENT_SELECTIVE),
+            expected_revision=1,
+        )
+        configured = settings.model_copy(
+            update={
+                "llm_enabled": True,
+                "llm_primary_provider": "ollama",
+                "llm_ollama_model": "fake-model",
+                "ambient_selective_enabled": False,
+            }
+        )
+        fake = FakeProvider()
+        assert (
+            await consume_planning_once(configured, database, "ambient-test", fake) == 1
+        )  # type: ignore[arg-type]
+        assert fake.calls == 0
+        async with database.session_factory() as session:
+            job = await session.scalar(select(ResponsePlanningJobModel))
+            plan = await session.scalar(select(ResponsePlanModel))
+            assert job is not None and job.ambient_reason == "ambient_feature_disabled"
+            assert plan is not None and plan.should_respond is False
+            attempts = await session.scalar(
+                select(func.count(ModelGenerationAttemptModel.id))
+            )
+            assert attempts == 0
+        await clear(database, queue)
         await database.stop()
 
     asyncio.run(scenario())

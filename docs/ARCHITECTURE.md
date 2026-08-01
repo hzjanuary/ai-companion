@@ -137,3 +137,8 @@ its business transaction; no lock spans provider or Telegram I/O. Recovery
 history contains opaque internal work IDs and closed classes only. A generic
 dead letter can re-enter normal scheduling once; a quarantine, including an
 ambiguous Telegram delivery, is intentionally not generically replayable.
+
+SPEC-017 keeps ambient participation policy in inner typed contracts. PostgreSQL
+retains immutable frequency revisions, trigger/origin, and confirmed delivery
+timestamps; Redis remains rate/concurrency coordination only. Sampling uses
+opaque internal IDs and no content.

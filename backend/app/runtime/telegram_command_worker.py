@@ -649,6 +649,7 @@ async def _read_detail(
             return (
                 f"state={state}; "
                 f"mode={revision.response_mode.value}; "
+                f"frequency={revision.ambient_frequency.value}; "
                 f"stickers={'on' if revision.stickers_enabled else 'off'}; "
                 f"mentions={'on' if latest_participant.mention_allowed else 'off'}; "
                 f"teasing={'on' if latest_participant.teasing_allowed else 'off'}; "
@@ -680,6 +681,8 @@ async def _read_detail(
             )
         if request.name == "mode" and revision:
             return revision.response_mode.value
+        if request.name == "frequency" and revision:
+            return revision.ambient_frequency.value
         if request.name == "stickers" and revision:
             return "on" if revision.stickers_enabled else "off"
         if request.name == "mentions" and latest_participant:
@@ -700,7 +703,7 @@ def _configuration_change(
     if (
         request.name == "mode"
         and request.value == "ambient_selective"
-        and not settings.command_ambient_selective_enabled
+        and not settings.ambient_selective_enabled
     ):
         return "ambient_disabled", None, False
     if (
@@ -733,6 +736,14 @@ def _configuration_change(
     elif request.name == "stickers":
         change = ConfigurationChange(
             stickers_enabled=bool(request.value),
+            source="telegram_command",
+            actor_participant_id=participant.id,
+        )
+    elif request.name == "frequency":
+        from app.domain.ambient import AmbientFrequency
+
+        change = ConfigurationChange(
+            ambient_frequency=AmbientFrequency(str(request.value)),
             source="telegram_command",
             actor_participant_id=participant.id,
         )

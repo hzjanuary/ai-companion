@@ -155,7 +155,7 @@ class Settings(BaseSettings):
     command_retry_max_delay_seconds: float = Field(default=60, gt=0, le=3600)
     command_max_argument_length: int = Field(default=500, ge=0, le=500)
     command_max_profiles_shown: int = Field(default=8, ge=1, le=20)
-    command_ambient_selective_enabled: bool = False
+    ambient_selective_enabled: bool = False
     command_menu_live_management_enabled: bool = False
     prompt_version: str = Field(default="spec-012-v1", min_length=1, max_length=64)
     response_plan_schema_version: str = Field(

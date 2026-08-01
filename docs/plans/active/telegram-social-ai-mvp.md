@@ -183,6 +183,29 @@ Out of scope:
   command/privacy/safety completion passed, as did personality, observability,
   and both static Zalo validators. This is an implementation-complete approval
   candidate; it is not product-owner approval.
+- [x] SPEC-017: schema audit completed. Existing revisions cannot preserve an
+  ambient frequency profile, planning cannot distinguish addressed from ambient
+  work or retain a closed ambient decision, and confirmed outbound delivery
+  cannot expose an origin for PostgreSQL cooldown reconstruction. Authorized
+  migration `0011_ambient_participation` is therefore required. The initial
+  implementation adds typed addressed/ambient triggers, low/normal/high policy
+  defaults, SHA-256 sampling over internal UUIDs and policy version only, one
+  canonical disabled-by-default feature setting, immutable frequency changes,
+  planning/outbound origin propagation, pre-provider feature/sample/cooldown
+  gates, prompt instructions, and post-generation silence/low-confidence/
+  mention/teasing suppression. Focused proof currently passes 58 no-network
+  tests, database lifecycle validation with 26 PostgreSQL integrations and
+  `0011 -> base -> 0011`, and eight PostgreSQL/Redis ingress integrations,
+  including a persisted ambient-mode job that completes with zero fake-provider
+  calls while the global feature gate is disabled. The focused validator also
+  preserves the existing two-worker addressed-delivery scalability proof.
+  Documentation and CI wiring are present. Final `validate.sh` passed 165
+  selected tests with Ruff, strict mypy, Harness, and diff checks; the complete
+  reliability/scalability and static Zalo validators also passed. Docker built
+  `january-backend:spec-017`, Compose configuration validated, migration head
+  applied in the rebuilt Compose image, and `/`, `/health`, `/live`, `/ready`,
+  and `/docs` each returned HTTP 200 with Telegram/provider integrations
+  disabled. The active MVP plan remains open for later specifications.
   SPEC-014 remains deferred.
 - [ ] Later MVP specifications.
 

@@ -3,8 +3,10 @@
 import asyncio
 import logging
 import socket
+from datetime import UTC, datetime
 from uuid import UUID
 
+from app.application.ambient import apply_ambient_post_policy
 from app.application.model_provider import ModelProvider, ProviderError
 from app.application.personality import merge_effective
 from app.application.planning_service import generate_validated_plan
@@ -13,11 +15,19 @@ from app.application.ports.rate_limit import RateLimiter
 from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.prompting import build_generation_request
 from app.application.rate_limit_rules import generation_rules, provider_rule
-from app.application.response_plan import ResponsePlanPolicy
+from app.application.response_plan import ResponsePlanCandidate, ResponsePlanPolicy
 from app.core.config import Settings
+from app.domain.ambient import (
+    AMBIENT_POLICY_VERSION,
+    AMBIENT_PROFILES,
+    AmbientReason,
+    ParticipationTrigger,
+    is_sampled,
+)
 from app.domain.planning import (
     GenerationAttemptKind,
     GenerationAttemptStatus,
+    PlanReasonCode,
     ProviderErrorCategory,
     ProviderId,
     StickerIntent,
@@ -194,6 +204,44 @@ async def consume_once(
                     job.response_schema_version,
                 )
                 continue
+            ambient = job.trigger == ParticipationTrigger.AMBIENT
+            ambient_profile = current_revision.ambient_frequency.value
+
+            async def complete_ambient_silence(
+                reason: AmbientReason,
+                job_id: UUID = job.id,
+                prompt_version: str = job.prompt_version,
+                schema_version: str = job.response_schema_version,
+                profile: str = ambient_profile,
+            ) -> None:
+                await repository.complete(
+                    job_id,
+                    lease_owner,
+                    ResponsePlanCandidate(
+                        should_respond=False,
+                        reason_code=PlanReasonCode.SILENCE,
+                        confidence=1.0,
+                    ),
+                    None,
+                    None,
+                    None,
+                    prompt_version,
+                    schema_version,
+                    reason.value,
+                )
+                recorder.increment(
+                    "january_ambient_decisions_total",
+                    outcome=reason.value,
+                    profile=profile,
+                    policy=AMBIENT_POLICY_VERSION,
+                )
+
+            if ambient and (
+                not settings.ambient_selective_enabled
+                or current_revision.response_mode.value != "ambient_selective"
+            ):
+                await complete_ambient_silence(AmbientReason.FEATURE_DISABLED)
+                continue
             effective = merge_effective(
                 version_values(version),
                 revision_overrides(revision),
@@ -211,6 +259,7 @@ async def consume_once(
                 maximum_output_tokens=settings.llm_max_output_tokens,
                 conversation_type=conversation.conversation_type.value,
                 response_mode=conversation.response_mode.value,
+                trigger=job.trigger.value,
                 effective_personality=effective,
                 stickers_enabled=revision.stickers_enabled,
             )
@@ -224,7 +273,6 @@ async def consume_once(
                 teasing_permitted=isinstance(teasing_level, int | float)
                 and teasing_level > 0,
             )
-
             # Do not send context assembled before a durable privacy/memory change.
             async with database.session_factory() as session:
                 fresh_conversation = await session.get(
@@ -236,6 +284,27 @@ async def consume_once(
             ):
                 await repository.release_for_context_change(job.id, lease_owner)
                 continue
+
+            if ambient:
+                if job.configuration_revision_id is None or not is_sampled(
+                    context.current.id,
+                    job.configuration_revision_id,
+                    current_revision.ambient_frequency,
+                    job.ambient_policy_version or AMBIENT_POLICY_VERSION,
+                ):
+                    await complete_ambient_silence(AmbientReason.NOT_SAMPLED)
+                    continue
+                last_ambient = await repository.latest_confirmed_ambient_response(
+                    conversation.id
+                )
+                profile_policy = AMBIENT_PROFILES[current_revision.ambient_frequency]
+                if (
+                    last_ambient is not None
+                    and (datetime.now(UTC) - last_ambient).total_seconds()
+                    < profile_policy.cooldown_seconds
+                ):
+                    await complete_ambient_silence(AmbientReason.COOLDOWN)
+                    continue
 
             participant_id = context.current.participant_id
             await safety_repository.record_decision(
@@ -426,15 +495,30 @@ async def consume_once(
                     settings.rate_limit_redis_failure_retry_seconds,
                 )
                 continue
+            candidate = outcome.candidate
+            ambient_reason: str | None = None
+            if ambient and candidate is not None:
+                profile_policy = AMBIENT_PROFILES[current_revision.ambient_frequency]
+                candidate, ambient_decision = apply_ambient_post_policy(
+                    candidate, profile_policy.minimum_confidence
+                )
+                ambient_reason = ambient_decision.value
+                recorder.increment(
+                    "january_ambient_decisions_total",
+                    outcome=ambient_reason,
+                    profile=current_revision.ambient_frequency.value,
+                    policy=AMBIENT_POLICY_VERSION,
+                )
             response_plan_id = await repository.complete(
                 job.id,
                 lease_owner,
-                outcome.candidate,
+                candidate,
                 provider.provider_id if provider else None,
                 provider.model if provider else None,
                 outcome.provider_error.category if outcome.provider_error else None,
                 job.prompt_version,
                 job.response_schema_version,
+                ambient_reason,
             )
             if outcome.candidate is None and outcome.provider_error is not None:
                 await SqlAlchemyRecoveryRepository(database.session_factory).classify(

@@ -55,6 +55,7 @@ def test_models_constraints_jsonb_repositories_and_timestamps(
 ) -> None:
     async def scenario() -> None:
         await database.start()
+        assert await database.is_ready()
         await clear_database(database)
         async with database.session_factory() as session:
             async with session.begin():

@@ -20,6 +20,7 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.domain.ambient import AmbientFrequency, ParticipationTrigger
 from app.domain.conversation import (
     EligibilityReason,
     MembershipStatus,
@@ -236,6 +237,11 @@ class ConversationConfigurationRevisionModel(UUIDPrimaryKeyMixin, TimestampMixin
         string_enum(ResponseMode, "configuration_response_mode"), nullable=False
     )
     stickers_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    ambient_frequency: Mapped[AmbientFrequency] = mapped_column(
+        string_enum(AmbientFrequency, "ambient_frequency"),
+        default=AmbientFrequency.NORMAL,
+        nullable=False,
+    )
     default_length: Mapped[str | None] = mapped_column(String(16))
     formality: Mapped[str | None] = mapped_column(String(16))
     humor_level: Mapped[float | None] = mapped_column()
@@ -486,6 +492,13 @@ class ResponsePlanningJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=PlanningJobStatus.PENDING,
         nullable=False,
     )
+    trigger: Mapped[ParticipationTrigger] = mapped_column(
+        string_enum(ParticipationTrigger, "planning_participation_trigger"),
+        default=ParticipationTrigger.ADDRESSED,
+        nullable=False,
+    )
+    ambient_policy_version: Mapped[str | None] = mapped_column(String(64))
+    ambient_reason: Mapped[str | None] = mapped_column(String(64))
     available_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -789,6 +802,11 @@ class OutboundActionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     kind: Mapped[OutboundActionKind] = mapped_column(
         string_enum(OutboundActionKind, "outbound_action_kind"), nullable=False
+    )
+    origin: Mapped[ParticipationTrigger] = mapped_column(
+        string_enum(ParticipationTrigger, "outbound_participation_origin"),
+        default=ParticipationTrigger.ADDRESSED,
+        nullable=False,
     )
     status: Mapped[OutboundActionStatus] = mapped_column(
         string_enum(OutboundActionStatus, "outbound_action_status"),

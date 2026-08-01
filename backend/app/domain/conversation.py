@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+from app.domain.ambient import ParticipationTrigger
 from app.domain.persistence import ConversationType, ParticipantRole, Platform
 
 
@@ -107,3 +108,4 @@ class NormalizedMembership:
 class EligibilityDecision:
     eligible: bool
     reason: EligibilityReason
+    trigger: ParticipationTrigger | None = None

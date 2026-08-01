@@ -39,6 +39,9 @@ class SqlAlchemyOutboundRepository:
         async with self._session_factory() as session:
             async with session.begin():
                 earlier = OutboundActionModel.__table__.alias("earlier")
+                conversation_earlier = OutboundActionModel.__table__.alias(
+                    "conversation_earlier"
+                )
                 actions = list(
                     await session.scalars(
                         select(OutboundActionModel)
@@ -66,6 +69,35 @@ class SqlAlchemyOutboundRepository:
                                         < OutboundActionModel.sequence_number
                                     )
                                     & earlier.c.status.in_(["pending", "leased"])
+                                )
+                            ),
+                            ~exists(
+                                select(conversation_earlier.c.id).where(
+                                    (OutboundActionModel.origin == "ambient")
+                                    & (
+                                        conversation_earlier.c.conversation_id
+                                        == OutboundActionModel.conversation_id
+                                    )
+                                    & (conversation_earlier.c.origin == "ambient")
+                                    & conversation_earlier.c.status.in_(
+                                        ["pending", "leased"]
+                                    )
+                                    & (
+                                        (
+                                            conversation_earlier.c.created_at
+                                            < OutboundActionModel.created_at
+                                        )
+                                        | (
+                                            (
+                                                conversation_earlier.c.created_at
+                                                == OutboundActionModel.created_at
+                                            )
+                                            & (
+                                                conversation_earlier.c.id
+                                                < OutboundActionModel.id
+                                            )
+                                        )
+                                    )
                                 )
                             ),
                         )

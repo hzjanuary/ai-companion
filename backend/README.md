@@ -82,6 +82,15 @@ by deployment/provider. It caps in-flight provider I/O, while the existing
 rate limiter caps throughput; both are checked before provider I/O and neither
 blocks privacy or other database-only mutations.
 
+## Ambient Participation
+
+`JANUARY_AMBIENT_SELECTIVE_ENABLED=false` is the default. When enabled, a group
+administrator may select `ambient_selective` mode and `/frequency low|normal|high`.
+Addressed messages bypass ambient sampling and cooldown. Ambient candidates are
+sampled deterministically from internal IDs, and only confirmed ambient
+delivery starts PostgreSQL-backed cooldown. Run `./scripts/validate-ambient.sh`
+for local, credential-free proof.
+
 ## Safety And Rate Limits
 
 `response-plan-v2` carries closed interaction metadata and is checked against

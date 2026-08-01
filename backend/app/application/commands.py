@@ -47,6 +47,14 @@ def parse_command(name: str, arguments: str) -> CommandRequest:
                 name, CommandOperation.CONFIGURATION, "mode", arguments
             )
         return _usage(name)
+    if name == "frequency":
+        if not arguments or arguments == "status":
+            return CommandRequest(name, CommandOperation.READ)
+        if arguments in {"low", "normal", "high"}:
+            return CommandRequest(
+                name, CommandOperation.CONFIGURATION, "frequency", arguments
+            )
+        return _usage(name)
     if name == "personality":
         if not arguments or arguments == "status":
             return CommandRequest(name, CommandOperation.READ)
@@ -113,9 +121,9 @@ def command_response(
         ),
         "help": (
             "Xem: /start, /status. Ca nhan: /mentions, /teasing. Quan tri nhom: "
-            "/mode, /quiet, /resume, /personality, /stickers.",
+            "/mode, /frequency, /quiet, /resume, /personality, /stickers.",
             "View: /start, /status. Personal: /mentions, /teasing. Group admins: "
-            "/mode, /quiet, /resume, /personality, /stickers.",
+            "/mode, /frequency, /quiet, /resume, /personality, /stickers.",
         ),
         "usage": ("Cu phap khong hop le. Dung /help.", "Invalid syntax. Use /help."),
         "unknown": (

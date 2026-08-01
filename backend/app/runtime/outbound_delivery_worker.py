@@ -6,7 +6,7 @@ import socket
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.application.ports.outbound import StickerAssetResolver
 from app.application.ports.platform import (
@@ -20,6 +20,7 @@ from app.application.ports.rate_limit import RateLimiter
 from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.rate_limit_rules import delivery_rules
 from app.core.config import Settings
+from app.domain.ambient import AMBIENT_PROFILES, ParticipationTrigger
 from app.domain.conversation import MembershipStatus
 from app.domain.outbound import (
     DeliveryAttemptStatus,
@@ -200,6 +201,16 @@ async def consume_once(
                         DeliveryAttemptStatus.REJECTED,
                         DeliveryCertainty.NOT_SENT,
                         error_category="stale_safety_boundary",
+                    )
+                    continue
+                if not await _ambient_delivery_allowed(database, settings, action):
+                    await repository.finalize(
+                        action.id,
+                        owner,
+                        OutboundActionStatus.SKIPPED,
+                        DeliveryAttemptStatus.REJECTED,
+                        DeliveryCertainty.NOT_SENT,
+                        error_category="ambient_policy_suppressed",
                     )
                     continue
                 if limiter is not None:
@@ -400,6 +411,42 @@ async def _safety_allows_delivery(
             )
         )
         return len(allowed) == len(identifiers)
+
+
+async def _ambient_delivery_allowed(
+    database: Database, settings: Settings, action: OutboundActionModel
+) -> bool:
+    """Recheck opt-in and confirmed-delivery cooldown before Telegram I/O."""
+    if action.origin != ParticipationTrigger.AMBIENT:
+        return True
+    if not settings.ambient_selective_enabled:
+        return False
+    async with database.session_factory() as session:
+        conversation = await session.get(ConversationModel, action.conversation_id)
+        if (
+            conversation is None
+            or conversation.current_configuration_revision_id is None
+        ):
+            return False
+        revision = await session.get(
+            ConversationConfigurationRevisionModel,
+            conversation.current_configuration_revision_id,
+        )
+        if revision is None or revision.response_mode.value != "ambient_selective":
+            return False
+        last = await session.scalar(
+            select(func.max(OutboundActionModel.completed_at)).where(
+                OutboundActionModel.conversation_id == action.conversation_id,
+                OutboundActionModel.origin == ParticipationTrigger.AMBIENT,
+                OutboundActionModel.status == OutboundActionStatus.DELIVERED,
+                OutboundActionModel.id != action.id,
+            )
+        )
+    return (
+        last is None
+        or (datetime.now(UTC) - last).total_seconds()
+        >= AMBIENT_PROFILES[revision.ambient_frequency].cooldown_seconds
+    )
 
 
 async def _stickers_allowed(

@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.personality import PersonalityOverrides
+from app.domain.ambient import AmbientFrequency
 from app.domain.persistence import PersonalityProfileStatus, ResponseMode
 from app.infrastructure.database.models import (
     ConversationConfigurationRevisionModel,
@@ -26,6 +27,7 @@ class ConfigurationChange:
     profile_version_id: UUID | None = None
     response_mode: ResponseMode | None = None
     stickers_enabled: bool | None = None
+    ambient_frequency: AmbientFrequency | None = None
     overrides: PersonalityOverrides = PersonalityOverrides()
     source: str = "operator_cli"
     reason_code: str | None = None
@@ -119,6 +121,8 @@ class SqlAlchemyGroupConfigurationService:
                         else current.stickers_enabled
                     )
                     == current.stickers_enabled
+                    and (change.ambient_frequency or current.ambient_frequency)
+                    == current.ambient_frequency
                     and all(
                         getattr(current, key) == value for key, value in values.items()
                     )
@@ -133,6 +137,8 @@ class SqlAlchemyGroupConfigurationService:
                     stickers_enabled=change.stickers_enabled
                     if change.stickers_enabled is not None
                     else current.stickers_enabled,
+                    ambient_frequency=change.ambient_frequency
+                    or current.ambient_frequency,
                     change_source=change.source,
                     reason_code=change.reason_code,
                     actor_participant_id=change.actor_participant_id,

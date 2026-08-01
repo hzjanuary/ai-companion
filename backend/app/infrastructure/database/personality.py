@@ -10,6 +10,7 @@ from app.application.personality import (
     content_hash,
     default_personality,
 )
+from app.domain.ambient import AmbientFrequency
 from app.domain.persistence import PersonalityProfileStatus, ResponseMode
 from app.infrastructure.database.models import (
     AssistantModel,
@@ -156,6 +157,7 @@ async def ensure_conversation_configuration(
         personality_profile_version_id=version.id,
         response_mode=ResponseMode.MENTION_ONLY,
         stickers_enabled=stickers_enabled,
+        ambient_frequency=AmbientFrequency.NORMAL,
         change_source="bootstrap",
     )
     session.add(revision)

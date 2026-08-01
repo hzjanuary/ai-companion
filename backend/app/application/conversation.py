@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.ambient import ParticipationTrigger
 from app.domain.conversation import EligibilityDecision, EligibilityReason
 from app.domain.persistence import (
     AssistantStatus,
@@ -57,32 +58,41 @@ def evaluate_eligibility(value: EligibilityInput) -> EligibilityDecision:
     if value.is_edit:
         return EligibilityDecision(False, EligibilityReason.EDITED_MESSAGE_NO_RESPONSE)
     if value.conversation_type == "private":
-        return EligibilityDecision(True, EligibilityReason.ELIGIBLE_PRIVATE_MESSAGE)
-    if value.response_mode == ResponseMode.MENTION_ONLY:
-        if value.mentions_assistant:
-            return EligibilityDecision(
-                True, EligibilityReason.ELIGIBLE_ASSISTANT_MENTIONED
-            )
-        if value.replies_to_assistant:
-            return EligibilityDecision(
-                True, EligibilityReason.ELIGIBLE_REPLY_TO_ASSISTANT
-            )
-        return EligibilityDecision(False, EligibilityReason.NOT_ADDRESSED_TO_ASSISTANT)
-    if value.response_mode == ResponseMode.MENTION_AND_NAME:
-        if value.mentions_assistant:
-            return EligibilityDecision(
-                True, EligibilityReason.ELIGIBLE_ASSISTANT_MENTIONED
-            )
-        if value.replies_to_assistant:
-            return EligibilityDecision(
-                True, EligibilityReason.ELIGIBLE_REPLY_TO_ASSISTANT
-            )
+        return EligibilityDecision(
+            True,
+            EligibilityReason.ELIGIBLE_PRIVATE_MESSAGE,
+            ParticipationTrigger.ADDRESSED,
+        )
+    if value.mentions_assistant:
+        return EligibilityDecision(
+            True,
+            EligibilityReason.ELIGIBLE_ASSISTANT_MENTIONED,
+            ParticipationTrigger.ADDRESSED,
+        )
+    if value.replies_to_assistant:
+        return EligibilityDecision(
+            True,
+            EligibilityReason.ELIGIBLE_REPLY_TO_ASSISTANT,
+            ParticipationTrigger.ADDRESSED,
+        )
+    if value.response_mode in {
+        ResponseMode.MENTION_AND_NAME,
+        ResponseMode.AMBIENT_SELECTIVE,
+    }:
         name = value.assistant_display_name.casefold().strip()
         if name and name in value.message_text.casefold():
-            return EligibilityDecision(True, EligibilityReason.ELIGIBLE_ASSISTANT_NAME)
-        return EligibilityDecision(False, EligibilityReason.NOT_ADDRESSED_TO_ASSISTANT)
+            return EligibilityDecision(
+                True,
+                EligibilityReason.ELIGIBLE_ASSISTANT_NAME,
+                ParticipationTrigger.ADDRESSED,
+            )
     if value.response_mode == ResponseMode.AMBIENT_SELECTIVE:
-        return EligibilityDecision(True, EligibilityReason.ELIGIBLE_AMBIENT_CANDIDATE)
+        return EligibilityDecision(
+            True,
+            EligibilityReason.ELIGIBLE_AMBIENT_CANDIDATE,
+            ParticipationTrigger.AMBIENT,
+        )
+    return EligibilityDecision(False, EligibilityReason.NOT_ADDRESSED_TO_ASSISTANT)
 
 
 class TokenEstimator(Protocol):

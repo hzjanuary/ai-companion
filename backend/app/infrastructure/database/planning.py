@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.outbound import compile_outbound_actions
 from app.application.response_plan import ResponsePlanCandidate
+from app.domain.ambient import ParticipationTrigger
+from app.domain.outbound import OutboundActionStatus
 from app.domain.planning import (
     GenerationAttemptKind,
     GenerationAttemptStatus,
@@ -160,6 +162,7 @@ class SqlAlchemyPlanningRepository:
         error: ProviderErrorCategory | None,
         prompt_version: str,
         schema_version: str,
+        ambient_reason: str | None = None,
     ) -> UUID | None:
         async with self._session_factory() as session:
             async with session.begin():
@@ -176,6 +179,7 @@ class SqlAlchemyPlanningRepository:
                 job.selected_provider = provider
                 job.selected_model = model
                 job.last_error_category = error
+                job.ambient_reason = ambient_reason
                 job.completed_at = now
                 job.lease_owner = None
                 job.lease_expires_at = None
@@ -228,6 +232,7 @@ class SqlAlchemyPlanningRepository:
                             ],
                             text=action.text,
                             sticker_intent=action.sticker_intent,
+                            origin=job.trigger,
                         )
                     )
                 job.status = (
@@ -236,3 +241,15 @@ class SqlAlchemyPlanningRepository:
                     else PlanningJobStatus.NO_RESPONSE
                 )
                 return plan.id
+
+    async def latest_confirmed_ambient_response(
+        self, conversation_id: UUID
+    ) -> datetime | None:
+        async with self._session_factory() as session:
+            return await session.scalar(
+                select(func.max(OutboundActionModel.completed_at)).where(
+                    OutboundActionModel.conversation_id == conversation_id,
+                    OutboundActionModel.origin == ParticipationTrigger.AMBIENT,
+                    OutboundActionModel.status == OutboundActionStatus.DELIVERED,
+                )
+            )
