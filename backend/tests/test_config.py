@@ -22,6 +22,7 @@ def test_settings_defaults() -> None:
     assert settings.retention_worker_enabled is False
     assert settings.rate_limit_enabled is False
     assert settings.rate_limit_generation_conversation_per_minute == 12
+    assert settings.semantic_memory_enabled is False
 
 
 def test_rate_limit_settings_are_typed_and_bounded(
@@ -201,6 +202,30 @@ def test_invalid_memory_and_retention_settings_are_rejected(
     monkeypatch.setenv(name, value)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_semantic_memory_settings_require_a_separate_embedding_capability() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, semantic_memory_enabled=True)
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            semantic_memory_worker_enabled=True,
+        )
+    settings = Settings(
+        _env_file=None,
+        semantic_memory_enabled=True,
+        embedding_provider="ollama",
+        embedding_model="nomic-embed-text",
+        embedding_dimension=768,
+    )
+    assert settings.embedding_model == "nomic-embed-text"
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            semantic_memory_retry_min_delay_seconds=2,
+            semantic_memory_retry_max_delay_seconds=1,
+        )
 
 
 def test_settings_read_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:

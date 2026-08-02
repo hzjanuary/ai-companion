@@ -57,6 +57,15 @@ def provider_rule(settings: Settings, provider_id: str) -> RateLimitRule:
     )
 
 
+def embedding_provider_rule(settings: Settings, provider_id: str) -> RateLimitRule:
+    return RateLimitRule(
+        RateLimitScope.PROVIDER,
+        provider_id,
+        settings.embedding_rate_per_minute,
+        60,
+    )
+
+
 def delivery_rules(
     settings: Settings, *, connection_id: UUID, conversation_id: UUID
 ) -> tuple[RateLimitRule, ...]:

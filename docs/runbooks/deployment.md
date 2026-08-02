@@ -14,3 +14,7 @@ The optional conversation-summary worker starts only when both summary flags are
 enabled. It can be stopped independently without interrupting raw-history
 planning. To roll back summary behavior, disable both flags; do not delete the
 stored summaries because retention and privacy cleanup still apply.
+
+The optional semantic-memory index worker starts separately. PostgreSQL remains
+authoritative; stop semantic query use by disabling both semantic flags, then
+continue deletion/reconciliation work from canonical PostgreSQL state as needed.

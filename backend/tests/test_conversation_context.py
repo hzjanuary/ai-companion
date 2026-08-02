@@ -102,7 +102,7 @@ def test_context_keeps_explicit_memories_in_deterministic_separate_budget() -> N
         ),
         memory_character_budget=11,
     )
-    assert [item.public_id for item in result.explicit_memories] == ["first", "later"]
+    assert [item.public_id for item in result.explicit_memories] == ["later", "first"]
 
 
 def test_context_uses_one_summary_before_non_overlapping_raw_history() -> None:

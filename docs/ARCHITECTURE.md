@@ -148,3 +148,15 @@ context. PostgreSQL stores summary jobs and content under the same conversation/
 thread boundary, while provider I/O stays in an optional runtime worker. Summary
 source windows use only retained raw messages; summaries never become input to
 later summaries and expire at the earliest represented raw-content deadline.
+
+SPEC-019 keeps explicit-memory semantic retrieval outside the inner domain.
+PostgreSQL is authoritative for canonical text, active/deleted state, and exact
+Assistant/connection/conversation scope. Qdrant is a rebuildable derived index
+containing vectors and content-free opaque metadata only. Query results are
+opaque IDs and must be revalidated against PostgreSQL before memory text enters
+context. Embedding and Qdrant clients stay in infrastructure; the durable index
+worker is a separate runtime and semantic failure falls back to existing memory
+selection. A PostgreSQL routing row selects the active physical collection for
+each compatible embedding version only after an operator rebuild verifies its
+opaque point IDs against canonical active-memory IDs; prior collections remain
+derived, non-authoritative recovery artifacts.

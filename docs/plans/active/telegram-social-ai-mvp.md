@@ -4,9 +4,11 @@ Date: 2026-07-29
 
 ## Status
 
-Active: SPEC-016 Telegram operational reliability, recovery, and scale
-verification track. SPEC-014 is `DEFERRED /
-BLOCKED_ON_EXTERNAL_PREREQUISITE` and is not the active project blocker.
+Active: Telegram MVP execution plan. SPEC-019 Explicit Memory Semantic Retrieval
+and Qdrant Derived Index is an `APPROVED CANDIDATE` pending product-owner
+approval; do not begin SPEC-020 without authorization.
+SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` and is not the
+active project blocker.
 
 ## Outcome
 
@@ -42,6 +44,97 @@ Out of scope:
   and rerunning the documented validation command.
 
 ## Progress
+
+- [x] SPEC-019: baseline authority and architecture/schema audit completed at
+  `2855e9c791bc29abae080c5ed6309b31137ea0ef` (accepted post-SPEC-018
+  housekeeping). Canonical validation passed: 172 selected no-network tests,
+  Ruff lint/format, strict mypy, Harness checks, and `git diff --check`.
+  `memory_items.id` is the immutable canonical PostgreSQL identity; creation
+  is command-job idempotent and deletion physically clears content/hash rather
+  than mutating content. Exact retrieval scope is `assistant_id`,
+  `platform_connection_id`, `conversation_id`, plus current active,
+  same-conversation visibility and scope. `/forget`, `/memory reset_group`,
+  and `/forget_me confirm` are the deletion paths and each advances the durable
+  conversation privacy revision. Existing fallback is deterministic active
+  explicit-memory selection under a separate 10-item/1,200-character budget;
+  summaries are independently derived same-thread context and remain excluded.
+  There is no embedding or Qdrant runtime. Existing summary-job infrastructure
+  cannot represent content-free per-memory upsert/delete work, so a dedicated
+  durable index-job table is required. Current chat providers expose generation
+  only; a separate embedding port/capability and deterministic fake are
+  required. Qdrant must remain a derived, rebuildable index with PostgreSQL
+  post-query revalidation before canonical text enters context.
+- [x] SPEC-019: initial implementation adds application embedding/index ports,
+  Ollama and direct Qdrant REST adapters, default-off settings, versioned
+  collections, migration `0013_explicit_memory_semantic_index` (Alembic
+  revision `0013_semantic_memory_index`, constrained by the existing 32-byte
+  version column), content-free durable UPSERT/DELETE jobs, and an optional
+  worker. Creation, `/forget`, group reset, and `/forget_me` schedule work only
+  after canonical PostgreSQL mutation. The query path uses incoming-message text
+  only, exact Qdrant filters, and mandatory PostgreSQL revalidation before
+  context. Qdrant/embedding errors return the existing fallback. Focused static
+  proof passes; `validate-semantic-memory.sh` passed Qdrant health plus
+  `0012 -> 0013 -> 0012 -> 0013`; `validate-memory.sh` passed four PostgreSQL
+  integrations including content-free create/delete job scheduling.
+- [x] SPEC-019: worker race proof now passes with project PostgreSQL and fake
+  embedding/index boundaries: a pending UPSERT followed by canonical deletion
+  produces no embedding input and no upsert, while deterministic derived DELETE
+  cleanup executes. The existing Redis limiter/concurrency infrastructure now
+  gates real embedding calls independently from chat generation.
+- [x] SPEC-019: Qdrant REST boundary tests prove upsert payloads contain only
+  approved opaque fields, exact query scope/version filters, and reconciliation
+  scroll requests with vectors disabled. `january-backend:spec-019` built;
+  Compose configuration passed; an isolated PostgreSQL/Redis/Qdrant runtime was
+  migrated to `0013_semantic_memory_index` and `/`, `/health`, `/live`,
+  `/ready`, and `/docs` returned 200 with semantic retrieval disabled. Compose
+  resources were removed afterward. The local operations CLI now reconciles
+  Qdrant opaque IDs against active PostgreSQL IDs, schedules canonical UPSERTs,
+  and deletes stale points. Fresh-collection rebuild switching and the full
+  synthetic scope/outage/context matrix remain open.
+- [x] SPEC-019: follow-up implementation adds PostgreSQL-routed physical
+  collections for a compatible embedding version. `rebuild --confirm` now
+  schedules durable target-collection jobs, indexes from canonical rows only,
+  verifies exact opaque IDs against active PostgreSQL records, and switches
+  query routing only on success; old collections are retained. Semantic
+  revalidation now checks exact assistant, connection, conversation, and scope.
+  The retriever applies its own count/character caps, preserves the existing
+  fallback within one explicit-memory budget, and emits only bounded semantic
+  telemetry. Worker retries use bounded exponential backoff and terminal
+  content-free failures. Focused fake and PostgreSQL proof passed: 39 settings
+  and semantic unit tests, seven memory integration tests for scope/stale-delete
+  safety and rebuild activation, strict mypy, Ruff, and `git diff --check`.
+- [x] SPEC-019: follow-up audit closed version-transition cleanup gaps. DELETE
+  scheduling now covers every historical UPSERT embedding version even when the
+  feature is currently disabled, and the worker routes each delete to that
+  version's active collection; missing Qdrant collections are idempotently
+  clean. Backfill now schedules only canonical IDs absent from the active index,
+  while reconcile removes stale IDs and active/expired filtering matches query
+  revalidation. Focused static proof after this change: 42 semantic/config
+  tests, Ruff, strict mypy, and `git diff --check` passed.
+- [x] SPEC-019: response-path I/O now has a one-second bounded semantic-query
+  timeout distinct from worker indexing. The metric registry explicitly
+  prohibits memory IDs, query text, vectors, and Qdrant/provider bodies as
+  labels. Current affected static proof passed 49 tests (semantic/config and
+  observability), Ruff, strict mypy, and `git diff --check`.
+- [x] SPEC-019: final Docker-enabled evidence on 2026-08-02: canonical
+  `./scripts/validate.sh` passed 185 selected tests plus Ruff lint/format,
+  strict mypy, Harness checks, and diff checking. The complete accepted
+  validator set passed serially, including database, ingress, conversation,
+  planning, delivery, demo, personality, commands, memory, safety,
+  observability, reliability, scalability, ambient, summaries, semantic-memory,
+  and static Zalo checks. `validate-semantic-memory.sh` passed 46 focused tests,
+  seven PostgreSQL integrations, Qdrant health, and `0012 -> 0013 -> 0012 ->
+  0013`. `january-backend:spec-019` built and `docker compose config` passed.
+  A live Compose runtime applied head and returned 200 from `/`, `/health`,
+  `/live`, `/ready`, and `/docs`. With a deterministic in-process fake embedding
+  adapter only, one canonical explicit memory produced one Qdrant point whose
+  payload had exactly `memory_id`, `assistant_id`, `platform_connection_id`,
+  `conversation_id`, `scope`, and `embedding_version`; PostgreSQL-backed
+  retrieval returned it, canonical deletion immediately removed it from context,
+  the DELETE job completed, and the isolated collection count returned zero.
+  Qdrant stopped while `/ready` still returned 200, then restarted. No provider,
+  Telegram, or public runtime call was made. Final cleanup and `git diff --check`
+  remain required immediately before the completion report.
 
 - [x] SPEC-001: repository authority and Harness status inspected; FastAPI
   foundation, documentation, CI, and container artifacts added.

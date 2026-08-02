@@ -47,6 +47,8 @@ and working-memory structure around that truth; it does not install upstream
 - `runbooks/ambient-participation.md`: SPEC-017 opt-in ambient policy and rollback.
 - `runbooks/conversation-summaries.md`: SPEC-018 derived-context worker,
   privacy/retention boundary, validation, and rollback.
+- `runbooks/semantic-memory.md`: SPEC-019 optional explicit-memory retrieval,
+  Qdrant rebuild, and rollback.
 - `platforms/zalo/`: SPEC-013 official-source register, capability matrix,
   parity analysis, and verification-gate decision; no Zalo runtime support.
 - `platforms/zalo/operator-verification-plan.md`: SPEC-014 redacted,

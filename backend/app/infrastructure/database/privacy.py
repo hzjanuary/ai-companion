@@ -8,7 +8,10 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.base import Executable
 
-from app.domain.persistence import MemoryDeletionReason, MemoryStatus
+from app.domain.persistence import (
+    MemoryDeletionReason,
+    MemoryStatus,
+)
 from app.domain.summary import ConversationSummaryStatus, SummaryInvalidationReason
 from app.infrastructure.database.models import (
     ConversationModel,
@@ -25,6 +28,11 @@ from app.infrastructure.database.models import (
     ResponsePlanningJobModel,
     TelegramCommandJobModel,
 )
+from app.infrastructure.database.semantic_memory import (
+    SqlAlchemySemanticMemoryRepository,
+)
+
+semantic_memory_jobs = SqlAlchemySemanticMemoryRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,8 +49,13 @@ class PrivacyErasureResult:
 
 
 class SqlAlchemyPrivacyRepository:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        embedding_version: str | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._embedding_version = embedding_version
 
     async def erase_subject(
         self,
@@ -184,6 +197,11 @@ class SqlAlchemyPrivacyRepository:
                             action_code="profile_deleted",
                             deletion_reason=MemoryDeletionReason.PROFILE_DELETION.value,
                         )
+                    )
+                    await semantic_memory_jobs.schedule_deletes_for_memory(
+                        session,
+                        memory_id,
+                        self._embedding_version,
                     )
                 conversation_ids = select(ConversationModel.id).where(
                     ConversationModel.id.in_(

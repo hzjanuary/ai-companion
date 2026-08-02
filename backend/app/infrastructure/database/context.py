@@ -14,8 +14,14 @@ from app.application.context import (
     build_context,
 )
 from app.application.conversation import CharacterTokenEstimator
+from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.core.config import Settings
-from app.domain.persistence import MemoryStatus, MemoryVisibility
+from app.domain.persistence import (
+    ConversationType,
+    MemoryScope,
+    MemoryStatus,
+    MemoryVisibility,
+)
 from app.domain.summary import ConversationSummaryStatus
 from app.infrastructure.database.models import (
     ConversationModel,
@@ -25,14 +31,19 @@ from app.infrastructure.database.models import (
     ParticipantModel,
     PlatformConnectionModel,
 )
+from app.infrastructure.semantic_memory import SemanticMemoryRetriever
 
 
 class SqlAlchemyConversationContextReader:
     def __init__(
-        self, session_factory: async_sessionmaker[AsyncSession], settings: Settings
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        settings: Settings,
+        telemetry: MetricsRecorder | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._settings = settings
+        self._telemetry = telemetry or NoOpMetricsRecorder()
 
     async def build_for_message(
         self, message_id: UUID, now: datetime | None = None
@@ -99,6 +110,30 @@ class SqlAlchemyConversationContextReader:
                 self._to_memory(memory, participant)
                 for memory, participant in memory_rows
             )
+            semantic_memories: tuple[ContextMemory, ...] = ()
+            if self._settings.semantic_memory_enabled and current.text:
+                conversation = await session.get(
+                    ConversationModel, current.conversation_id
+                )
+                if conversation is not None:
+                    connection = await session.get(
+                        PlatformConnectionModel, conversation.platform_connection_id
+                    )
+                    if connection is not None:
+                        semantic_memories = await SemanticMemoryRetriever(
+                            self._settings, self._session_factory, self._telemetry
+                        ).retrieve(
+                            current.text,
+                            assistant_id=connection.assistant_id,
+                            platform_connection_id=conversation.platform_connection_id,
+                            conversation_id=conversation.id,
+                            scope=(
+                                MemoryScope.PRIVATE_CONVERSATION
+                                if conversation.conversation_type
+                                == ConversationType.PRIVATE
+                                else MemoryScope.GROUP_CONVERSATION
+                            ),
+                        )
             summary = await self._active_summary(session, current, current_time)
         return build_context(
             current=current,
@@ -110,8 +145,18 @@ class SqlAlchemyConversationContextReader:
             character_limit=self._settings.context_message_character_limit,
             max_age_days=self._settings.context_max_history_age_days,
             estimator=CharacterTokenEstimator(),
-            explicit_memories=memories,
-            memory_character_budget=self._settings.memory_context_character_budget,
+            explicit_memories=_merge_memories(
+                semantic_memories[: self._settings.semantic_memory_context_limit],
+                memories,
+            ),
+            memory_character_budget=(
+                min(
+                    self._settings.memory_context_character_budget,
+                    self._settings.semantic_memory_character_budget,
+                )
+                if self._settings.semantic_memory_enabled
+                else self._settings.memory_context_character_budget
+            ),
             historical_summary=summary,
         )
 
@@ -195,3 +240,11 @@ class SqlAlchemyConversationContextReader:
                 else participant.display_name
             ),
         )
+
+
+def _merge_memories(
+    semantic: tuple[ContextMemory, ...], fallback: tuple[ContextMemory, ...]
+) -> tuple[ContextMemory, ...]:
+    """Keep semantic ranking first, then deterministic canonical fallback."""
+    seen = {item.public_id for item in semantic}
+    return semantic + tuple(item for item in fallback if item.public_id not in seen)

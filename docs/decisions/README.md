@@ -27,3 +27,4 @@ documents here as real choices are accepted, then index them in this file.
 - [0014 Operational Telemetry Boundary](0014-operational-telemetry-boundary.md)
 - [0015 Operational Recovery and Provider Concurrency](0015-operational-recovery-and-provider-concurrency.md)
 - [0016 Conversation Summary Retention Boundary](0016-conversation-summary-retention-boundary.md)
+- [0017 Explicit Memory Semantic Index](0017-explicit-memory-semantic-index.md)

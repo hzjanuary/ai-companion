@@ -17,6 +17,7 @@ from app.application.memory import MemoryValidationError, normalize_explicit_mem
 from app.application.ports.platform import PlatformAdapter, PlatformAdapterError
 from app.application.ports.telemetry import NoOpMetricsRecorder
 from app.application.response_plan import ResponsePlanCandidate
+from app.application.semantic_memory import embedding_version
 from app.core.config import Settings, get_settings
 from app.domain.persistence import (
     CommandAuthorizationOutcome,
@@ -61,7 +62,20 @@ async def consume_once(
         return 0
     lease_owner = owner or worker_name(settings)
     repository = SqlAlchemyCommandRepository(database.session_factory)
-    memory_repository = SqlAlchemyMemoryRepository(database.session_factory)
+    index_version = (
+        embedding_version(
+            settings.embedding_provider,
+            settings.embedding_model,
+            settings.embedding_dimension,
+        )
+        if settings.semantic_memory_enabled
+        and settings.embedding_provider is not None
+        and settings.embedding_model is not None
+        else None
+    )
+    memory_repository = SqlAlchemyMemoryRepository(
+        database.session_factory, index_version
+    )
     jobs = await repository.claim(
         lease_owner, settings.command_batch_size, settings.command_lease_seconds
     )
@@ -390,8 +404,19 @@ async def _handle_memory_command(
         await _finish(commands, job, owner, "forget_me_warning", language)
         return
     if request.action == "confirm":
+        index_version = (
+            embedding_version(
+                settings.embedding_provider,
+                settings.embedding_model,
+                settings.embedding_dimension,
+            )
+            if settings.semantic_memory_enabled
+            and settings.embedding_provider is not None
+            and settings.embedding_model is not None
+            else None
+        )
         result = await SqlAlchemyPrivacyRepository(
-            database.session_factory
+            database.session_factory, index_version
         ).erase_subject(
             assistant_id=assistant.id,
             platform_connection_id=conversation.platform_connection_id,

@@ -108,6 +108,26 @@ class Settings(BaseSettings):
     context_max_history_age_days: int = Field(default=30, ge=1, le=365)
     memory_context_limit: int = Field(default=10, ge=1, le=10)
     memory_context_character_budget: int = Field(default=1200, ge=1, le=10_000)
+    semantic_memory_enabled: bool = False
+    semantic_memory_worker_enabled: bool = False
+    embedding_provider: Literal["ollama"] | None = None
+    embedding_model: str | None = None
+    embedding_dimension: int = Field(default=768, ge=1, le=8192)
+    embedding_rate_per_minute: int = Field(default=40, ge=1, le=100_000)
+    qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_collection_prefix: str = Field(
+        default="january_explicit_memory", min_length=1, max_length=64
+    )
+    semantic_memory_top_k: int = Field(default=6, ge=1, le=20)
+    semantic_memory_context_limit: int = Field(default=6, ge=1, le=10)
+    semantic_memory_character_budget: int = Field(default=1200, ge=1, le=10_000)
+    semantic_memory_query_timeout_seconds: float = Field(default=1, gt=0, le=5)
+    semantic_memory_min_score: float | None = Field(default=None, ge=-1, le=1)
+    semantic_memory_job_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    semantic_memory_job_batch_size: int = Field(default=10, ge=1, le=100)
+    semantic_memory_max_attempts: int = Field(default=5, ge=1, le=20)
+    semantic_memory_retry_min_delay_seconds: float = Field(default=1, gt=0, le=60)
+    semantic_memory_retry_max_delay_seconds: float = Field(default=60, gt=0, le=3600)
     conversation_summaries_enabled: bool = False
     summary_worker_enabled: bool = False
     summary_min_source_messages: int = Field(default=20, ge=2, le=500)
@@ -313,11 +333,21 @@ class Settings(BaseSettings):
             raise ValueError("LLM base URL must be an absolute HTTP(S) URL")
         return value.rstrip("/")
 
+    @field_validator("qdrant_url")
+    @classmethod
+    def validate_qdrant_url(cls, value: str) -> str:
+        url = urlparse(value)
+        if url.scheme not in {"http", "https"} or not url.netloc:
+            raise ValueError("qdrant_url must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
+
     @field_validator(
         "telegram_bot_token",
         "telegram_webhook_secret_token",
         "telegram_platform_connection_id",
         "telegram_delivery_test_chat_id",
+        "embedding_provider",
+        "embedding_model",
         mode="before",
     )
     @classmethod
@@ -390,6 +420,24 @@ class Settings(BaseSettings):
         if self.summary_worker_enabled and not self.conversation_summaries_enabled:
             raise ValueError(
                 "summary_worker_enabled requires conversation_summaries_enabled"
+            )
+        if self.semantic_memory_worker_enabled and not self.semantic_memory_enabled:
+            raise ValueError(
+                "semantic_memory_worker_enabled requires semantic_memory_enabled"
+            )
+        if self.semantic_memory_enabled and (
+            self.embedding_provider is None or not self.embedding_model
+        ):
+            raise ValueError(
+                "embedding_provider and embedding_model are required when "
+                "semantic memory is enabled"
+            )
+        if (
+            self.semantic_memory_retry_min_delay_seconds
+            > self.semantic_memory_retry_max_delay_seconds
+        ):
+            raise ValueError(
+                "semantic memory retry minimum delay cannot exceed maximum delay"
             )
         if self.summary_min_source_messages > self.summary_max_source_messages:
             raise ValueError(

@@ -91,6 +91,29 @@ def test_summary_metrics_are_content_free() -> None:
         )
 
 
+def test_semantic_metrics_are_content_free_and_version_bounded() -> None:
+    recorder = InMemoryMetricsRecorder()
+    recorder.increment(
+        "january_semantic_memory_index_operations_total",
+        operation="upsert",
+        outcome="success",
+        embedding_version="e3c614853e2dd6a1",
+    )
+    recorder.increment(
+        "january_semantic_memory_fallback_total", reason="qdrant_unavailable"
+    )
+    exposition = recorder.exposition()
+    assert "e3c614853e2dd6a1" in exposition
+    with pytest.raises(ValueError, match="prohibited"):
+        recorder.increment(
+            "january_semantic_memory_index_operations_total",
+            operation="upsert",
+            outcome="success",
+            embedding_version="e3c614853e2dd6a1",
+            memory_id="unsafe-memory-id",
+        )
+
+
 def test_usage_cost_is_reported_or_unknown_without_fabrication() -> None:
     recorder = InMemoryMetricsRecorder()
     record_provider_usage(

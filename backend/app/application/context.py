@@ -136,7 +136,7 @@ def _select_memories(
 
     selected: list[ContextMemory] = []
     used = 0
-    for memory in sorted(memories, key=lambda item: (item.created_at, item.public_id)):
+    for memory in memories:
         if not memory.content:
             continue
         cost = len(memory.content)

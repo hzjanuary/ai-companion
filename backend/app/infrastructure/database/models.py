@@ -54,6 +54,8 @@ from app.domain.persistence import (
     Platform,
     PlatformConnectionStatus,
     ResponseMode,
+    SemanticMemoryIndexJobStatus,
+    SemanticMemoryIndexOperation,
 )
 from app.domain.planning import (
     GenerationAttemptKind,
@@ -736,6 +738,52 @@ class MemoryEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     action_code: Mapped[str] = mapped_column(String(64), nullable=False)
     deletion_reason: Mapped[str | None] = mapped_column(String(32))
     affected_count: Mapped[int | None] = mapped_column()
+
+
+class ExplicitMemorySemanticIndexJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Durable derived-index work; canonical memory text never enters this row."""
+
+    __tablename__ = "explicit_memory_semantic_index_jobs"
+    __table_args__ = (
+        UniqueConstraint("memory_id", "operation", "embedding_version"),
+        Index("ix_semantic_memory_jobs_claim", "status", "available_at", "created_at"),
+        Index("ix_semantic_memory_jobs_lease", "status", "lease_expires_at"),
+    )
+
+    memory_id: Mapped[UUID] = mapped_column(
+        ForeignKey("memory_items.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    operation: Mapped[SemanticMemoryIndexOperation] = mapped_column(
+        string_enum(SemanticMemoryIndexOperation, "semantic_memory_index_operation"),
+        nullable=False,
+    )
+    embedding_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_collection: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[SemanticMemoryIndexJobStatus] = mapped_column(
+        string_enum(SemanticMemoryIndexJobStatus, "semantic_memory_index_job_status"),
+        default=SemanticMemoryIndexJobStatus.PENDING,
+        nullable=False,
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_category: Mapped[str | None] = mapped_column(String(64))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExplicitMemorySemanticIndexCollectionModel(
+    UUIDPrimaryKeyMixin, TimestampMixin, Base
+):
+    """Active physical Qdrant collection for one compatible embedding version."""
+
+    __tablename__ = "explicit_memory_semantic_index_collections"
+    __table_args__ = (UniqueConstraint("embedding_version"),)
+
+    embedding_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    collection_name: Mapped[str] = mapped_column(String(128), nullable=False)
 
 
 class ParticipantPreferenceEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):

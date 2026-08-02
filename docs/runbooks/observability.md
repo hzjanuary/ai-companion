@@ -25,6 +25,11 @@ SPEC-018 adds content-free `january_summary_jobs_total`,
 provider, and schema version; summary text, source text, IDs, and source hashes
 are never telemetry values.
 
+SPEC-019 adds content-free semantic query/index/fallback and embedding metrics.
+Their labels are closed operation/outcome/provider/version categories only;
+memory IDs, conversations, query text, memory text, vectors, Qdrant bodies, and
+provider bodies are never labels or log fields.
+
 SPEC-016 adds `january_recovery_events_total`,
 `january_dead_letter_events_total`, `january_quarantine_events_total`, and
 `january_provider_concurrency_events_total`. Their only labels are closed work

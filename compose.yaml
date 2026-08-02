@@ -19,6 +19,12 @@ services:
       JANUARY_DATABASE_USER: ${JANUARY_DATABASE_USER:-january}
       JANUARY_DATABASE_PASSWORD: ${JANUARY_DATABASE_PASSWORD:-january-local}
       JANUARY_REDIS_URL: redis://redis:6379/0
+      JANUARY_QDRANT_URL: http://qdrant:6333
+      JANUARY_SEMANTIC_MEMORY_ENABLED: ${JANUARY_SEMANTIC_MEMORY_ENABLED:-false}
+      JANUARY_SEMANTIC_MEMORY_WORKER_ENABLED: ${JANUARY_SEMANTIC_MEMORY_WORKER_ENABLED:-false}
+      JANUARY_EMBEDDING_PROVIDER: ${JANUARY_EMBEDDING_PROVIDER:-}
+      JANUARY_EMBEDDING_MODEL: ${JANUARY_EMBEDDING_MODEL:-}
+      JANUARY_EMBEDDING_DIMENSION: ${JANUARY_EMBEDDING_DIMENSION:-768}
       JANUARY_RATE_LIMIT_ENABLED: "true"
       JANUARY_TELEGRAM_ENABLED: ${JANUARY_TELEGRAM_ENABLED:-false}
       JANUARY_TELEGRAM_BOT_TOKEN: ${JANUARY_TELEGRAM_BOT_TOKEN:-}
@@ -55,6 +61,18 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    ports:
+      - "127.0.0.1:${JANUARY_QDRANT_HOST_PORT:-6333}:6333"
+    healthcheck:
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - january-qdrant-data:/qdrant/storage
 
 volumes:
   january-postgres-data:
+  january-qdrant-data:

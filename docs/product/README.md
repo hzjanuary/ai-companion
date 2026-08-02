@@ -34,13 +34,15 @@ contract, implementation, and executable tests.
 - [SPEC-016 Telegram Operational Reliability, Recovery, and Scale](specs/SPEC-016-telegram-operational-reliability-recovery-and-scale.md)
 - [SPEC-017 Telegram Ambient Selective Participation](specs/SPEC-017-telegram-ambient-selective-participation.md)
 - [SPEC-018 Telegram Conversation Summaries and Bounded Context Compression](specs/SPEC-018-telegram-conversation-summaries-and-context-compression.md)
+- [SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index](specs/SPEC-019-explicit-memory-semantic-retrieval-and-qdrant.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Roadmap State
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` pending a dedicated
 nonproduction Zalo OA/application. Its outstanding live checks do not block
-the Telegram MVP. SPEC-018 is the active Telegram conversation-summary track.
+the Telegram MVP. SPEC-019 is the active Telegram explicit-memory retrieval
+track.
 
 ## Update Rule
 

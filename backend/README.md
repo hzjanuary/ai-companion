@@ -175,6 +175,23 @@ limit in bounded batches, and never calls Telegram or an LLM.
 Conversation summaries are optional, short-lived derived context. Their dedicated
 worker reads only retained incoming text, never runs on the response path, and
 expires each summary at the earliest source-message retention deadline.
+
+## Semantic Explicit Memory
+
+Semantic retrieval is disabled by default and operates only on active explicit
+memories. PostgreSQL remains authoritative; Qdrant is a rebuildable derived
+index containing vectors and content-free opaque scope metadata, never memory
+text. Each query result is revalidated in PostgreSQL before canonical content
+enters context, so stale Qdrant points cannot restore forgotten memories.
+
+Enable a separately configured local Ollama embedding capability and run the
+optional worker outside the API process. Qdrant or embedding failure falls back
+to the existing bounded explicit-memory selection. See
+[`docs/runbooks/semantic-memory.md`](../docs/runbooks/semantic-memory.md).
+The existing OpenAI, Gemini, Groq, OpenRouter, and Ollama chat adapters are
+generation capabilities; only the separate local Ollama embedding adapter is
+currently supported for semantic memory. `/ready` deliberately does not depend
+on Qdrant, Ollama, or the optional worker.
 # Backend
 
 ## Observability

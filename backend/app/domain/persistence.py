@@ -126,6 +126,18 @@ class MemoryDeletionReason(StrEnum):
     EXPIRATION = "expiration"
 
 
+class SemanticMemoryIndexOperation(StrEnum):
+    UPSERT = "upsert"
+    DELETE = "delete"
+
+
+class SemanticMemoryIndexJobStatus(StrEnum):
+    PENDING = "pending"
+    LEASED = "leased"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantRecord:
     id: UUID

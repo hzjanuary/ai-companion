@@ -7,6 +7,7 @@ from enum import StrEnum
 class RateLimitOperation(StrEnum):
     GENERATION = "generation"
     DELIVERY = "delivery"
+    EMBEDDING = "embedding"
 
 
 class RateLimitScope(StrEnum):

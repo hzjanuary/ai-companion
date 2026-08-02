@@ -79,8 +79,9 @@ async def consume_once(
     if not settings.llm_enabled:
         return 0
     repository = SqlAlchemyPlanningRepository(database.session_factory)
+    recorder = telemetry or NoOpMetricsRecorder()
     context_reader = SqlAlchemyConversationContextReader(
-        database.session_factory, settings
+        database.session_factory, settings, recorder
     )
     claimed = await repository.claim(
         owner or worker_name(settings),
@@ -108,7 +109,6 @@ async def consume_once(
         else None
     )
     safety_repository = SqlAlchemySafetyRepository(database.session_factory)
-    recorder = telemetry or NoOpMetricsRecorder()
     for _ in claimed:
         recorder.increment("january_planning_jobs_total", outcome="claimed")
     primary = primary_provider or create_model_provider(

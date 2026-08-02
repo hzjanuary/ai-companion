@@ -29,7 +29,7 @@ def test_safety_schema_and_redis_limiter_are_atomic_and_content_free() -> None:
                     await connection.scalar(
                         text("SELECT version_num FROM alembic_version")
                     )
-                    == "0012_conversation_summaries"
+                    == "0013_semantic_memory_index"
                 )
                 tables = set(
                     await connection.scalars(

@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0012_conversation_summaries"
+                        and revision == "0013_semantic_memory_index"
                     )
         except Exception:
             return False

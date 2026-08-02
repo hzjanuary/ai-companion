@@ -10,13 +10,23 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.memory import ExplicitMemoryDraft
-from app.domain.persistence import MemoryDeletionReason, MemoryStatus, MemoryVisibility
+from app.domain.persistence import (
+    MemoryDeletionReason,
+    MemoryStatus,
+    MemoryVisibility,
+    SemanticMemoryIndexOperation,
+)
 from app.infrastructure.database.models import (
     ConversationModel,
     MemoryEventModel,
     MemoryItemModel,
     ParticipantModel,
 )
+from app.infrastructure.database.semantic_memory import (
+    SqlAlchemySemanticMemoryRepository,
+)
+
+semantic_memory_jobs = SqlAlchemySemanticMemoryRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,8 +36,17 @@ class MemoryListEntry:
 
 
 class SqlAlchemyMemoryRepository:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        embedding_version: str | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._embedding_version = embedding_version
+
+    @property
+    def embedding_version(self) -> str | None:
+        return self._embedding_version
 
     async def create(
         self,
@@ -74,6 +93,13 @@ class SqlAlchemyMemoryRepository:
                         action_code="created",
                     )
                 )
+                if self._embedding_version is not None:
+                    await SqlAlchemySemanticMemoryRepository.schedule(
+                        session,
+                        item.id,
+                        SemanticMemoryIndexOperation.UPSERT,
+                        self._embedding_version,
+                    )
                 conversation = await session.get(ConversationModel, conversation_id)
                 if conversation is not None:
                     conversation.memory_privacy_revision += 1
@@ -215,6 +241,11 @@ class SqlAlchemyMemoryRepository:
                         deletion_reason=reason.value,
                     )
                 )
+                await semantic_memory_jobs.schedule_deletes_for_memory(
+                    session,
+                    item.id,
+                    self._embedding_version,
+                )
                 conversation = await session.get(ConversationModel, conversation_id)
                 if conversation is not None:
                     conversation.memory_privacy_revision += 1
@@ -255,6 +286,12 @@ class SqlAlchemyMemoryRepository:
                     )
                 )
                 count = len(updated_ids)
+                for memory_id in updated_ids:
+                    await semantic_memory_jobs.schedule_deletes_for_memory(
+                        session,
+                        memory_id,
+                        self._embedding_version,
+                    )
                 session.add(
                     MemoryEventModel(
                         command_job_id=command_job_id,

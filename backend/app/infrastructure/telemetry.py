@@ -17,6 +17,7 @@ PROHIBITED_LABEL_NAMES: Final = frozenset(
         "conversation_id",
         "participant_id",
         "message_id",
+        "memory_id",
         "planning_job_id",
         "response_plan_id",
         "outbound_action_id",
@@ -29,6 +30,10 @@ PROHIBITED_LABEL_NAMES: Final = frozenset(
         "text",
         "prompt",
         "memory",
+        "query",
+        "vector",
+        "qdrant_body",
+        "provider_body",
         "url",
         "exception",
         "secret",
@@ -121,6 +126,24 @@ METRICS: Final[dict[str, MetricDefinition]] = {
     ),
     "january_summary_retention_events_total": MetricDefinition(
         "counter", frozenset({"outcome"})
+    ),
+    "january_semantic_memory_queries_total": MetricDefinition(
+        "counter", frozenset({"outcome", "provider"})
+    ),
+    "january_semantic_memory_index_jobs_total": MetricDefinition(
+        "counter", frozenset({"operation", "outcome"})
+    ),
+    "january_semantic_memory_index_operations_total": MetricDefinition(
+        "counter", frozenset({"operation", "outcome", "embedding_version"})
+    ),
+    "january_semantic_memory_fallback_total": MetricDefinition(
+        "counter", frozenset({"reason"})
+    ),
+    "january_embedding_requests_total": MetricDefinition(
+        "counter", frozenset({"provider", "outcome"})
+    ),
+    "january_embedding_request_duration_seconds": MetricDefinition(
+        "histogram", frozenset({"provider", "outcome"})
     ),
     "january_worker_operations_total": MetricDefinition(
         "counter", frozenset({"runtime", "operation", "outcome"})

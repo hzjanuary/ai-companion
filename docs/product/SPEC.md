@@ -1855,14 +1855,15 @@ SPEC-015 Telegram MVP Observability and Operational Telemetry
 SPEC-016 Telegram Operational Reliability, Recovery, and Scale Verification
 SPEC-017 Telegram Ambient Selective Participation and Social Response Policy
 SPEC-018 Telegram Conversation Summaries and Bounded Context Compression
+SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index
 ```
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`: its Phase 1
 preparation is complete, while credentialed verification waits for an
 operator-owned dedicated nonproduction OA/application. This Zalo-only gate is
 not on the Telegram MVP critical path. SPEC-015 and SPEC-016 are completed
-Telegram observability and operational-reliability work. SPEC-018 is the active
-conversation-summary track; SPEC-014 remains deferred and no Zalo runtime is
+Telegram observability and operational-reliability work. SPEC-019 is the active
+explicit-memory semantic-retrieval track; SPEC-014 remains deferred and no Zalo runtime is
 authorized.
 
 Each SPEC should define:

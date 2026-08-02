@@ -199,6 +199,11 @@ JANUARY_CONVERSATION_SUMMARIES_ENABLED=true JANUARY_SUMMARY_WORKER_ENABLED=true 
   JANUARY_LLM_ENABLED=true uv run python -m app.runtime.conversation_summary_worker --once
 ```
 
+Semantic explicit-memory retrieval is separately disabled by default. It has no
+effect on readiness and does not embed summaries or raw messages. See
+[`semantic-memory.md`](semantic-memory.md) for the guarded configuration and
+local Qdrant worker commands.
+
 ## Safety And Rate Limits
 
 SPEC-012 uses `response-plan-v2` and `safety-policy-v1`. Hard safety boundaries
