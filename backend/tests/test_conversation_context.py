@@ -1,7 +1,12 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from app.application.context import ContextMemory, ContextMessage, build_context
+from app.application.context import (
+    ContextMemory,
+    ContextMessage,
+    ContextSummary,
+    build_context,
+)
 from app.application.conversation import CharacterTokenEstimator
 
 
@@ -98,3 +103,29 @@ def test_context_keeps_explicit_memories_in_deterministic_separate_budget() -> N
         memory_character_budget=11,
     )
     assert [item.public_id for item in result.explicit_memories] == ["first", "later"]
+
+
+def test_context_uses_one_summary_before_non_overlapping_raw_history() -> None:
+    conversation_id = uuid4()
+    older = message(conversation_id=conversation_id, minutes=1, text="older")
+    recent = message(conversation_id=conversation_id, minutes=3, text="recent")
+    current = message(conversation_id=conversation_id, minutes=4, text="current")
+    result = build_context(
+        current=current,
+        candidates=(older, recent),
+        now=datetime(2026, 1, 2, tzinfo=UTC),
+        recent_limit=2,
+        reply_chain_depth=0,
+        token_budget=20,
+        character_limit=100,
+        max_age_days=30,
+        estimator=CharacterTokenEstimator(),
+        historical_summary=ContextSummary(
+            summary="compressed older history",
+            schema_version="conversation-summary-v1",
+            prompt_version="test",
+            source_ended_at=older.sent_at,
+        ),
+    )
+    assert result.historical_summary is not None
+    assert result.recent_history == (recent,)

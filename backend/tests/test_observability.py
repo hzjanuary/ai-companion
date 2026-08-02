@@ -70,6 +70,27 @@ def test_recovery_and_concurrency_metrics_use_only_bounded_labels() -> None:
         )
 
 
+def test_summary_metrics_are_content_free() -> None:
+    recorder = InMemoryMetricsRecorder()
+    recorder.increment(
+        "january_summary_generation_total",
+        outcome="completed",
+        provider="ollama",
+        schema="v1",
+    )
+    recorder.increment(
+        "january_summary_context_usage_total", outcome="used", schema="v1"
+    )
+    with pytest.raises(ValueError, match="prohibited"):
+        recorder.increment(
+            "january_summary_generation_total",
+            outcome="completed",
+            provider="ollama",
+            schema="v1",
+            text="unsafe-summary",
+        )
+
+
 def test_usage_cost_is_reported_or_unknown_without_fabrication() -> None:
     recorder = InMemoryMetricsRecorder()
     record_provider_usage(

@@ -73,6 +73,7 @@ from app.domain.safety import (
     SafetyReasonCode,
     SafetyStage,
 )
+from app.domain.summary import ConversationSummaryStatus
 from app.infrastructure.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -350,6 +351,107 @@ class MessageModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     reply_to: Mapped["MessageModel | None"] = relationship(
         remote_side="MessageModel.id", foreign_keys=[reply_to_message_id]
+    )
+
+
+class ConversationSummaryModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "conversation_summaries"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "source_window_hash", "schema_version"),
+        Index(
+            "ix_conversation_summaries_active",
+            "conversation_id",
+            "platform_thread_id",
+            "status",
+            "expires_at",
+        ),
+        Index("ix_conversation_summaries_expiry", "status", "expires_at"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    platform_thread_id: Mapped[str | None] = mapped_column(String(255))
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[ProviderId | None] = mapped_column(
+        string_enum(ProviderId, "conversation_summary_provider")
+    )
+    model: Mapped[str | None] = mapped_column(String(255))
+    source_first_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_last_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_ended_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_count: Mapped[int] = mapped_column(nullable=False)
+    source_window_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary_text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[ConversationSummaryStatus] = mapped_column(
+        string_enum(ConversationSummaryStatus, "conversation_summary_status"),
+        default=ConversationSummaryStatus.COMPLETED,
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invalidation_reason: Mapped[str | None] = mapped_column(String(64))
+
+
+class ConversationSummaryJobModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "conversation_summary_jobs"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "source_window_hash", "schema_version"),
+        Index(
+            "ix_conversation_summary_jobs_claim", "status", "available_at", "created_at"
+        ),
+        Index("ix_conversation_summary_jobs_lease", "status", "lease_expires_at"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    platform_thread_id: Mapped[str | None] = mapped_column(String(255))
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_first_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_last_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_ended_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    source_count: Mapped[int] = mapped_column(nullable=False)
+    source_window_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    status: Mapped[ConversationSummaryStatus] = mapped_column(
+        string_enum(ConversationSummaryStatus, "conversation_summary_job_status"),
+        default=ConversationSummaryStatus.PENDING,
+        nullable=False,
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(255))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_category: Mapped[ProviderErrorCategory | None] = mapped_column(
+        string_enum(ProviderErrorCategory, "conversation_summary_error_category")
     )
 
 

@@ -9,11 +9,14 @@ from sqlalchemy import func, select
 
 from app.core.config import Settings
 from app.domain.persistence import MemoryStatus
+from app.domain.summary import ConversationSummaryStatus
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
     ConversationConfigurationRevisionModel,
     ConversationModel,
     ConversationProcessingRecordModel,
+    ConversationSummaryJobModel,
+    ConversationSummaryModel,
     IncomingPlatformUpdateModel,
     IngressOutboxEventModel,
     MemoryEventModel,
@@ -203,6 +206,42 @@ async def inspect_latest(
                     for item in memory_items
                 ],
                 "latest_event_codes": [event.action_code for event in memory_events],
+            }
+            summary_statuses = (
+                await session.execute(
+                    select(
+                        ConversationSummaryModel.status,
+                        func.count(ConversationSummaryModel.id),
+                    ).group_by(ConversationSummaryModel.status)
+                )
+            ).all()
+            job_statuses = (
+                await session.execute(
+                    select(
+                        ConversationSummaryJobModel.status,
+                        func.count(ConversationSummaryJobModel.id),
+                    ).group_by(ConversationSummaryJobModel.status)
+                )
+            ).all()
+            summary["conversation_summaries"] = {
+                "enabled": settings.conversation_summaries_enabled,
+                "worker_enabled": settings.summary_worker_enabled,
+                "summary_statuses": {
+                    status.value: count for status, count in summary_statuses
+                },
+                "job_statuses": {status.value: count for status, count in job_statuses},
+                "oldest_pending_at": await session.scalar(
+                    select(func.min(ConversationSummaryJobModel.created_at)).where(
+                        ConversationSummaryJobModel.status
+                        == ConversationSummaryStatus.PENDING
+                    )
+                ),
+                "nearest_expiry": await session.scalar(
+                    select(func.min(ConversationSummaryModel.expires_at)).where(
+                        ConversationSummaryModel.status
+                        == ConversationSummaryStatus.COMPLETED
+                    )
+                ),
             }
             safety_decisions = list(
                 await session.scalars(

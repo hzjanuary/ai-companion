@@ -9,7 +9,9 @@ from sqlalchemy.sql.base import Executable
 
 from app.domain.outbound import OutboundActionStatus
 from app.domain.persistence import CommandJobStatus, MessageProcessingStatus
+from app.domain.summary import ConversationSummaryStatus, SummaryInvalidationReason
 from app.infrastructure.database.models import (
+    ConversationSummaryModel,
     IncomingPlatformUpdateModel,
     MessageModel,
     OutboundActionModel,
@@ -25,6 +27,7 @@ class RetentionCounts:
     response_plans: int = 0
     outbound_actions: int = 0
     command_arguments: int = 0
+    summaries: int = 0
 
 
 class SqlAlchemyRetentionRepository:
@@ -54,6 +57,7 @@ class SqlAlchemyRetentionRepository:
                     command_arguments=await _redact_commands(
                         session, cutoff, current, batch_size
                     ),
+                    summaries=await _expire_summaries(session, current, batch_size),
                 )
 
 
@@ -172,6 +176,30 @@ async def _redact_commands(
         .where(TelegramCommandJobModel.id.in_(ids))
         .values(arguments="", arguments_redacted_at=now)
         .returning(TelegramCommandJobModel.id),
+    )
+
+
+async def _expire_summaries(session: AsyncSession, now: datetime, limit: int) -> int:
+    ids = (
+        select(ConversationSummaryModel.id)
+        .where(
+            ConversationSummaryModel.expires_at <= now,
+            ConversationSummaryModel.status == ConversationSummaryStatus.COMPLETED,
+        )
+        .order_by(ConversationSummaryModel.expires_at, ConversationSummaryModel.id)
+        .limit(limit)
+    )
+    return await _count(
+        session,
+        update(ConversationSummaryModel)
+        .where(ConversationSummaryModel.id.in_(ids))
+        .values(
+            summary_text=None,
+            status=ConversationSummaryStatus.EXPIRED,
+            invalidated_at=now,
+            invalidation_reason=SummaryInvalidationReason.RETENTION_EXPIRED,
+        )
+        .returning(ConversationSummaryModel.id),
     )
 
 

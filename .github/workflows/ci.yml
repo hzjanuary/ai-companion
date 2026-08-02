@@ -45,6 +45,7 @@ jobs:
       - run: ./scripts/validate-reliability.sh
       - run: ./scripts/validate-scalability.sh
       - run: ./scripts/validate-ambient.sh
+      - run: ./scripts/validate-summaries.sh
       - run: uv run alembic upgrade head
         env:
           JANUARY_ENVIRONMENT: test

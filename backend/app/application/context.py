@@ -33,11 +33,22 @@ class ContextMemory:
 
 
 @dataclass(frozen=True, slots=True)
+class ContextSummary:
+    """Derived, same-conversation history that remains untrusted context."""
+
+    summary: str
+    schema_version: str
+    prompt_version: str
+    source_ended_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class ConversationContext:
     current: ContextMessage
     reply_chain: tuple[ContextMessage, ...]
     recent_history: tuple[ContextMessage, ...]
     explicit_memories: tuple[ContextMemory, ...] = ()
+    historical_summary: ContextSummary | None = None
 
 
 def build_context(
@@ -53,6 +64,7 @@ def build_context(
     estimator: TokenEstimator,
     explicit_memories: tuple[ContextMemory, ...] = (),
     memory_character_budget: int = 1200,
+    historical_summary: ContextSummary | None = None,
 ) -> ConversationContext:
     """Select current, reply ancestors, then newest eligible history under budget."""
 
@@ -74,6 +86,14 @@ def build_context(
         used += cost
         ancestor_id = ancestor.reply_to_message_id
 
+    summary = historical_summary
+    if summary is not None:
+        summary_cost = estimator.estimate(summary.summary[:character_limit])
+        if used + summary_cost <= token_budget:
+            used += summary_cost
+        else:
+            summary = None
+
     history: list[ContextMessage] = []
     excluded = {item.id for item in accepted}
     for candidate in sorted(
@@ -87,6 +107,8 @@ def build_context(
             continue
         if candidate.platform_thread_id != current.platform_thread_id:
             continue
+        if summary is not None and candidate.sent_at <= summary.source_ended_at:
+            continue
         cost = _cost(candidate, character_limit, estimator)
         if used + cost > token_budget:
             continue
@@ -97,6 +119,7 @@ def build_context(
         reply_chain=tuple(chain),
         recent_history=tuple(history),
         explicit_memories=_select_memories(explicit_memories, memory_character_budget),
+        historical_summary=summary,
     )
 
 

@@ -41,5 +41,5 @@ docker compose exec -T database pg_dump -U january -Fc january > "$dump"
 docker compose exec -T database createdb -U january "$restore_db"
 docker compose exec -T database pg_restore -U january -d "$restore_db" < "$dump"
 result="$(docker compose exec -T database psql -At -U january -d "$restore_db" -c "SELECT (SELECT version_num FROM alembic_version), (SELECT count(*) FROM messages WHERE id='60000000-0000-0000-0000-000000000001' AND text IS NULL AND content_redacted_at IS NOT NULL), (SELECT count(*) FROM outbound_actions WHERE id='a0000000-0000-0000-0000-000000000001' AND status='delivered' AND idempotency_key='synthetic-backup-idempotency'), (SELECT count(*) FROM safety_policy_decisions), (SELECT count(*) FROM rate_limit_events), (SELECT count(*) FROM operational_recovery_items WHERE disposition='dead_letter'), (SELECT count(*) FROM operational_recovery_items WHERE disposition='quarantine')")"
-[[ "$result" == "0011_ambient_participation|1|1|1|1|1|1" ]]
+[[ "$result" == "0012_conversation_summaries|1|1|1|1|1|1" ]]
 echo "Synthetic PostgreSQL backup/restore rehearsal: valid (revision, redaction, idempotency, safety/rate, recovery)"

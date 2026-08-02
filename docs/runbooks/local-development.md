@@ -191,6 +191,14 @@ retention pass outside validation, enable the dedicated no-network worker:
 JANUARY_RETENTION_WORKER_ENABLED=true uv run python -m app.runtime.retention_worker --once
 ```
 
+Conversation summaries are disabled by default. To run their separate worker,
+enable both flags and the already-configured LLM provider:
+
+```bash
+JANUARY_CONVERSATION_SUMMARIES_ENABLED=true JANUARY_SUMMARY_WORKER_ENABLED=true \
+  JANUARY_LLM_ENABLED=true uv run python -m app.runtime.conversation_summary_worker --once
+```
+
 ## Safety And Rate Limits
 
 SPEC-012 uses `response-plan-v2` and `safety-policy-v1`. Hard safety boundaries

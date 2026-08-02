@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     context_max_history_age_days: int = Field(default=30, ge=1, le=365)
     memory_context_limit: int = Field(default=10, ge=1, le=10)
     memory_context_character_budget: int = Field(default=1200, ge=1, le=10_000)
+    conversation_summaries_enabled: bool = False
+    summary_worker_enabled: bool = False
+    summary_min_source_messages: int = Field(default=20, ge=2, le=500)
+    summary_max_source_messages: int = Field(default=50, ge=2, le=500)
+    summary_max_output_tokens: int = Field(default=300, ge=32, le=1024)
+    summary_lease_seconds: int = Field(default=60, ge=5, le=3600)
+    summary_batch_size: int = Field(default=4, ge=1, le=100)
     raw_content_retention_days: int = Field(default=30, ge=1, le=30)
     retention_batch_size: int = Field(default=100, ge=1, le=1000)
     retention_worker_enabled: bool = False
@@ -380,6 +387,14 @@ class Settings(BaseSettings):
             raise ValueError("command retry minimum delay cannot exceed maximum delay")
         if self.llm_fallback_provider == self.llm_primary_provider:
             raise ValueError("LLM fallback provider must differ from primary provider")
+        if self.summary_worker_enabled and not self.conversation_summaries_enabled:
+            raise ValueError(
+                "summary_worker_enabled requires conversation_summaries_enabled"
+            )
+        if self.summary_min_source_messages > self.summary_max_source_messages:
+            raise ValueError(
+                "summary_min_source_messages cannot exceed summary_max_source_messages"
+            )
         if self.llm_enabled:
             for provider in filter(
                 None, (self.llm_primary_provider, self.llm_fallback_provider)

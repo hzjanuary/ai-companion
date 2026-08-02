@@ -19,6 +19,12 @@ rate-limit, and worker operation measurements. It never contains text,
 prompts, memory, raw platform IDs, request/correlation IDs, usernames, URLs,
 tokens, secrets, or exception bodies as labels or exposition values.
 
+SPEC-018 adds content-free `january_summary_jobs_total`,
+`january_summary_generation_total`, `january_summary_context_usage_total`, and
+`january_summary_retention_events_total`. Their labels are only closed outcomes,
+provider, and schema version; summary text, source text, IDs, and source hashes
+are never telemetry values.
+
 SPEC-016 adds `january_recovery_events_total`,
 `january_dead_letter_events_total`, `january_quarantine_events_total`, and
 `january_provider_concurrency_events_total`. Their only labels are closed work

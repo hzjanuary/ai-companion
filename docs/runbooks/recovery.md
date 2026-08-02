@@ -19,6 +19,11 @@ For an incident, stop planning and outbound before freezing external effects;
 inspect recovery state; restore PostgreSQL/Redis; then resume normal workers.
 Do not routinely downgrade a production database as rollback.
 
+Conversation-summary jobs have no Telegram side effect and are not delivery
+quarantines. Any retry or replay must re-check feature gates, source-window
+identity, privacy state, and retention before provider I/O; invalid/expired
+source windows are terminal and never replayed from stored summary text.
+
 `./scripts/validate-scalability.sh` runs the local two-worker ingress burst and
 prints its observed item count, duplicate-effect count, and elapsed time. These
 are repeatable local observations, not production latency or SLO claims.

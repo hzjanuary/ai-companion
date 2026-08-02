@@ -30,6 +30,7 @@ async def consume_once(
             counts.response_plans,
             counts.outbound_actions,
             counts.command_arguments,
+            counts.summaries,
         )
     )
     logger.info("retention_redaction_complete counts=%s", counts)
@@ -39,6 +40,12 @@ async def consume_once(
         operation="redaction_batch",
         outcome="completed",
     )
+    if counts.summaries:
+        recorder.increment(
+            "january_summary_retention_events_total",
+            counts.summaries,
+            outcome="expired",
+        )
     recorder.observe(
         "january_worker_operation_duration_seconds",
         perf_counter() - started,

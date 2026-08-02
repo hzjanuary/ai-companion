@@ -9,3 +9,8 @@ planning worker, outbound worker, then retention worker. Configure rate limits
 and provider concurrency independently. Before restarting after an incident,
 inspect dead letters and quarantines. Roll back application code when possible;
 database downgrade is an exceptional, explicitly scoped recovery action.
+
+The optional conversation-summary worker starts only when both summary flags are
+enabled. It can be stopped independently without interrupting raw-history
+planning. To roll back summary behavior, disable both flags; do not delete the
+stored summaries because retention and privacy cleanup still apply.

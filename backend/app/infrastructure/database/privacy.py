@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.base import Executable
 
 from app.domain.persistence import MemoryDeletionReason, MemoryStatus
+from app.domain.summary import ConversationSummaryStatus, SummaryInvalidationReason
 from app.infrastructure.database.models import (
     ConversationModel,
     ConversationProcessingRecordModel,
+    ConversationSummaryModel,
     IncomingPlatformUpdateModel,
     MemoryEventModel,
     MemoryItemModel,
@@ -34,6 +36,7 @@ class PrivacyErasureResult:
     response_plans: int
     outbound_actions: int
     memories: int
+    summaries: int
     already_deleted: bool
 
 
@@ -77,7 +80,7 @@ class SqlAlchemyPrivacyRepository:
                     )
                 )
                 if not participant_ids:
-                    return PrivacyErasureResult(0, 0, 0, 0, 0, 0, 0, True)
+                    return PrivacyErasureResult(0, 0, 0, 0, 0, 0, 0, 0, True)
                 active = await session.scalar(
                     select(ParticipantModel.id).where(
                         ParticipantModel.id.in_(participant_ids),
@@ -85,7 +88,7 @@ class SqlAlchemyPrivacyRepository:
                     )
                 )
                 if active is None:
-                    return PrivacyErasureResult(0, 0, 0, 0, 0, 0, 0, True)
+                    return PrivacyErasureResult(0, 0, 0, 0, 0, 0, 0, 0, True)
                 participant_count = await _count(
                     session,
                     update(ParticipantModel)
@@ -189,6 +192,22 @@ class SqlAlchemyPrivacyRepository:
                         )
                     )
                 )
+                summary_count = await _count(
+                    session,
+                    update(ConversationSummaryModel)
+                    .where(
+                        ConversationSummaryModel.conversation_id.in_(conversation_ids),
+                        ConversationSummaryModel.status
+                        == ConversationSummaryStatus.COMPLETED,
+                    )
+                    .values(
+                        summary_text=None,
+                        status=ConversationSummaryStatus.INVALIDATED,
+                        invalidated_at=current,
+                        invalidation_reason=SummaryInvalidationReason.PRIVACY_ERASURE,
+                    )
+                    .returning(ConversationSummaryModel.id),
+                )
                 await session.execute(
                     update(ConversationModel)
                     .where(ConversationModel.id.in_(conversation_ids))
@@ -205,6 +224,7 @@ class SqlAlchemyPrivacyRepository:
                     plan_count,
                     action_count,
                     len(memory_ids),
+                    summary_count,
                     False,
                 )
 

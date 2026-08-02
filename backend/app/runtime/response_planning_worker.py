@@ -138,6 +138,18 @@ async def consume_once(
                     job.response_schema_version,
                 )
                 continue
+            if context.historical_summary is not None:
+                recorder.increment(
+                    "january_summary_context_usage_total",
+                    outcome="used",
+                    schema=context.historical_summary.schema_version,
+                )
+            else:
+                recorder.increment(
+                    "january_summary_context_usage_total",
+                    outcome="raw_fallback",
+                    schema="none",
+                )
             async with database.session_factory() as session:
                 conversation = await session.get(ConversationModel, job.conversation_id)
                 current_revision = (

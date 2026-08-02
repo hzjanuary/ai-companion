@@ -207,6 +207,36 @@ Out of scope:
   and `/docs` each returned HTTP 200 with Telegram/provider integrations
   disabled. The active MVP plan remains open for later specifications.
   SPEC-014 remains deferred.
+- [ ] SPEC-018: audit confirms there is no durable conversation-summary feature.
+  Current response context is bounded same-conversation/topic raw history plus
+  explicit memory; automatic summaries are derived conversational content, not
+  explicit memory, and therefore require source-retention-bound expiry and
+  conservative privacy invalidation before context use. Baseline canonical
+  validation passed; focused database/ingress/conversation/planning/delivery,
+  command, memory, safety, observability, ambient, and static Zalo checks were
+  exercised. Some long nested integration validators encountered external
+  PostgreSQL container shutdowns during baseline setup; this remains to be
+  rerun under stable Docker state before completion. Implementation in progress:
+  migration `0012_conversation_summaries`, disabled-by-default feature/worker
+  flags, strict `conversation-summary-v1`, bounded retained-source windows,
+  optional worker leases with provider rate/concurrency gates, context
+  precedence/no-overlap, privacy invalidation, and expiry cleanup are present.
+  Focused no-network tests passed (9), the dedicated synthetic validator passed
+  its 15 focused tests and 26 PostgreSQL integration tests before cleanly
+  stopping its project database, and Alembic has separately upgraded to the
+  `0012_conversation_summaries` head. Dedicated summary integration coverage,
+  full regression, and Docker/runtime proof remain required.
+  A current PostgreSQL synthetic pipeline now proves deterministic source-window
+  scheduling/idempotency, focal-message exclusion, strict fake-provider worker
+  output, no summary-of-summary request content, summary-plus-non-overlapping
+  raw context, exact earliest-source expiry cleanup, all-active-summary
+  `/forget_me` invalidation, and rate-limit denial without provider I/O.
+  Final operator-provided normal-terminal evidence confirms `validate-db.sh`
+  and every remaining required legacy validator completed sequentially with
+  exit code 0, without implementation, test, validator, or timeout changes.
+  The Codex duration interruption is therefore resolved externally. Current
+  final static evidence has `git diff --check` passing and no Compose resources;
+  this remains an approval candidate, not product-owner approval.
 - [ ] Later MVP specifications.
 
 ## Decisions

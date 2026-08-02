@@ -165,11 +165,16 @@ cleared while technical tombstones remain.
 
 ```bash
 JANUARY_RETENTION_WORKER_ENABLED=true uv run python -m app.runtime.retention_worker --once
+JANUARY_CONVERSATION_SUMMARIES_ENABLED=true JANUARY_SUMMARY_WORKER_ENABLED=true \
+  JANUARY_LLM_ENABLED=true uv run python -m app.runtime.conversation_summary_worker --once
 JANUARY_DB_HOST_PORT=5433 JANUARY_REDIS_HOST_PORT=6380 ./scripts/validate-memory.sh
 ```
 
 The dedicated worker uses PostgreSQL only, applies a maximum 30-day raw-content
 limit in bounded batches, and never calls Telegram or an LLM.
+Conversation summaries are optional, short-lived derived context. Their dedicated
+worker reads only retained incoming text, never runs on the response path, and
+expires each summary at the earliest source-message retention deadline.
 # Backend
 
 ## Observability

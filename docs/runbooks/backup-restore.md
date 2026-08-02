@@ -7,7 +7,9 @@ as business truth.
 In an isolated environment, apply migration head, seed synthetic data, run
 `pg_dump`, restore into an empty database, then verify migration head, row and
 relationship counts, idempotency keys, redaction tombstones, completed outbound
-actions, recovery disposition, and pending schedule. Start synthetic workers
+actions, recovery disposition, pending schedule, and summary-content redaction.
+Summary text is derived content and must never be included in operator reports.
+Start synthetic workers
 after restore. Never use production payloads in this rehearsal; delete temporary
 dumps or keep them only in ignored local storage.
 

@@ -110,6 +110,18 @@ METRICS: Final[dict[str, MetricDefinition]] = {
     "january_ambient_decisions_total": MetricDefinition(
         "counter", frozenset({"outcome", "profile", "policy"})
     ),
+    "january_summary_jobs_total": MetricDefinition(
+        "counter", frozenset({"outcome", "schema"})
+    ),
+    "january_summary_generation_total": MetricDefinition(
+        "counter", frozenset({"outcome", "provider", "schema"})
+    ),
+    "january_summary_context_usage_total": MetricDefinition(
+        "counter", frozenset({"outcome", "schema"})
+    ),
+    "january_summary_retention_events_total": MetricDefinition(
+        "counter", frozenset({"outcome"})
+    ),
     "january_worker_operations_total": MetricDefinition(
         "counter", frozenset({"runtime", "operation", "outcome"})
     ),

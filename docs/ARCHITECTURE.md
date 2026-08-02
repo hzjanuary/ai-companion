@@ -142,3 +142,9 @@ SPEC-017 keeps ambient participation policy in inner typed contracts. PostgreSQL
 retains immutable frequency revisions, trigger/origin, and confirmed delivery
 timestamps; Redis remains rate/concurrency coordination only. Sampling uses
 opaque internal IDs and no content.
+
+SPEC-018 keeps conversation summaries outside the domain as short-lived derived
+context. PostgreSQL stores summary jobs and content under the same conversation/
+thread boundary, while provider I/O stays in an optional runtime worker. Summary
+source windows use only retained raw messages; summaries never become input to
+later summaries and expire at the earliest represented raw-content deadline.

@@ -9,14 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.application.context import (
     ContextMemory,
     ContextMessage,
+    ContextSummary,
     ConversationContext,
     build_context,
 )
 from app.application.conversation import CharacterTokenEstimator
 from app.core.config import Settings
 from app.domain.persistence import MemoryStatus, MemoryVisibility
+from app.domain.summary import ConversationSummaryStatus
 from app.infrastructure.database.models import (
     ConversationModel,
+    ConversationSummaryModel,
     MemoryItemModel,
     MessageModel,
     ParticipantModel,
@@ -96,6 +99,7 @@ class SqlAlchemyConversationContextReader:
                 self._to_memory(memory, participant)
                 for memory, participant in memory_rows
             )
+            summary = await self._active_summary(session, current, current_time)
         return build_context(
             current=current,
             candidates=candidates,
@@ -108,6 +112,40 @@ class SqlAlchemyConversationContextReader:
             estimator=CharacterTokenEstimator(),
             explicit_memories=memories,
             memory_character_budget=self._settings.memory_context_character_budget,
+            historical_summary=summary,
+        )
+
+    async def _active_summary(
+        self, session: AsyncSession, current: ContextMessage, now: datetime
+    ) -> ContextSummary | None:
+        if not self._settings.conversation_summaries_enabled:
+            return None
+        summary = await session.scalar(
+            select(ConversationSummaryModel)
+            .where(
+                ConversationSummaryModel.conversation_id == current.conversation_id,
+                ConversationSummaryModel.platform_thread_id.is_not_distinct_from(
+                    current.platform_thread_id
+                ),
+                ConversationSummaryModel.status == ConversationSummaryStatus.COMPLETED,
+                ConversationSummaryModel.invalidated_at.is_(None),
+                ConversationSummaryModel.expires_at > now,
+                ConversationSummaryModel.summary_text.is_not(None),
+                ConversationSummaryModel.source_ended_at < current.sent_at,
+            )
+            .order_by(
+                ConversationSummaryModel.source_ended_at.desc(),
+                ConversationSummaryModel.id.desc(),
+            )
+            .limit(1)
+        )
+        if summary is None or not summary.summary_text:
+            return None
+        return ContextSummary(
+            summary=summary.summary_text,
+            schema_version=summary.schema_version,
+            prompt_version=summary.prompt_version,
+            source_ended_at=summary.source_ended_at,
         )
 
     async def _load_message(
