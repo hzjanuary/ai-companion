@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.retention import SqlAlchemyRetentionRepository
 from app.infrastructure.telemetry import InMemoryMetricsRecorder
+from app.runtime.lifecycle import RuntimeLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +66,17 @@ async def run(once: bool) -> None:
         InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
     )
     await database.start()
+    lifecycle = RuntimeLifecycle("retention_worker")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             processed = await consume_once(settings, database, telemetry)
             if once:
                 return
             if processed == 0:
-                await asyncio.sleep(settings.retention_worker_poll_interval_seconds)
+                await lifecycle.wait(settings.retention_worker_poll_interval_seconds)
     finally:
+        lifecycle.close()
         await database.stop()
 
 

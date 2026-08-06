@@ -10,6 +10,7 @@ from app.domain.persistence import IngressSource
 from app.infrastructure.database.database import Database
 from app.infrastructure.database.ingress import SqlAlchemyDurableIngressRepository
 from app.infrastructure.telegram.adapter import TelegramAdapter, create_telegram_adapter
+from app.runtime.lifecycle import RuntimeLifecycle
 
 
 async def poll_once(
@@ -59,8 +60,10 @@ async def run() -> None:
         raise RuntimeError("Telegram must be enabled to run the polling runtime")
     await database.start()
     delay = settings.telegram_poll_retry_backoff_seconds
+    lifecycle = RuntimeLifecycle("telegram_poller")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             try:
                 await poll_once(settings, database, adapter)
                 delay = settings.telegram_poll_retry_backoff_seconds
@@ -72,15 +75,16 @@ async def run() -> None:
                 logging.getLogger("january.ingress").warning(
                     "telegram_poll_retryable_failure"
                 )
-                await asyncio.sleep(delay)
+                await lifecycle.wait(delay)
                 delay = min(delay * 2, settings.telegram_poll_max_backoff_seconds)
             except Exception as error:
                 logging.getLogger("january.ingress").warning(
                     "telegram_poll_failed", exc_info=error
                 )
-                await asyncio.sleep(delay)
+                await lifecycle.wait(delay)
                 delay = min(delay * 2, settings.telegram_poll_max_backoff_seconds)
     finally:
+        lifecycle.close()
         await adapter.aclose()
         await database.stop()
 

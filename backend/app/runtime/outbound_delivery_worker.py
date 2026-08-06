@@ -59,6 +59,7 @@ from app.infrastructure.telegram.rendering import (
     render_text_with_mentions,
 )
 from app.infrastructure.telemetry import InMemoryMetricsRecorder
+from app.runtime.lifecycle import RuntimeLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -601,11 +602,14 @@ async def run() -> None:
         InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
     )
     await database.start()
+    lifecycle = RuntimeLifecycle("outbound_delivery_worker")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             if await consume_once(settings, database, telemetry=telemetry) == 0:
-                await asyncio.sleep(settings.outbound_poll_interval_seconds)
+                await lifecycle.wait(settings.outbound_poll_interval_seconds)
     finally:
+        lifecycle.close()
         await database.stop()
 
 

@@ -160,3 +160,12 @@ selection. A PostgreSQL routing row selects the active physical collection for
 each compatible embedding version only after an operator rebuild verifies its
 opaque point IDs against canonical active-memory IDs; prior collections remain
 derived, non-authoritative recovery artifacts.
+
+SPEC-020 keeps deployment concerns outside product policy. The API remains
+stateless and migrations are a separately owned deployment step before API or
+worker roles start. Ingress, conversation, planning, command, outbound,
+retention, summary, and semantic-index processes have independent lifecycle,
+restart, and drain boundaries. `/live` is process-only; `/ready` checks bounded
+required dependencies and schema compatibility, while optional Qdrant/Ollama
+and derived workers expose separate operational state. External secrets are
+injected at the process boundary and controlled-restart rotation is the default.

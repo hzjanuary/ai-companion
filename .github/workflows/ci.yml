@@ -46,6 +46,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --all-groups --locked
       - run: ./scripts/validate.sh
+      - run: ./scripts/validate-deployment.sh
       - run: ./scripts/validate-zalo-feasibility.sh
       - run: ./scripts/validate-zalo-verification.sh
       - run: ./scripts/validate-observability.sh

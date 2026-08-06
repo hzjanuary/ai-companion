@@ -1,0 +1,169 @@
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${JANUARY_DATABASE_NAME:?JANUARY_DATABASE_NAME is required}
+      POSTGRES_USER: ${JANUARY_DATABASE_USER:?JANUARY_DATABASE_USER is required}
+      POSTGRES_PASSWORD: ${JANUARY_DATABASE_PASSWORD:?JANUARY_DATABASE_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${JANUARY_STAGING_DB_PORT:-5435}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - january-spec020-postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${JANUARY_STAGING_REDIS_PORT:-6382}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    ports:
+      - "127.0.0.1:${JANUARY_STAGING_QDRANT_PORT:-6335}:6333"
+    healthcheck:
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - january-spec020-qdrant:/qdrant/storage
+
+  migration:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      JANUARY_ENVIRONMENT: staging
+      JANUARY_DATABASE_HOST: database
+      JANUARY_DATABASE_PORT: "5432"
+      JANUARY_DATABASE_NAME: ${JANUARY_DATABASE_NAME:?JANUARY_DATABASE_NAME is required}
+      JANUARY_DATABASE_USER: ${JANUARY_DATABASE_USER:?JANUARY_DATABASE_USER is required}
+      JANUARY_DATABASE_PASSWORD: ${JANUARY_DATABASE_PASSWORD:?JANUARY_DATABASE_PASSWORD is required}
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    ports:
+      - "127.0.0.1:${JANUARY_STAGING_HTTP_PORT:-8010}:8000"
+    environment: &january-staging-app-env
+      JANUARY_ENVIRONMENT: staging
+      JANUARY_LOG_LEVEL: INFO
+      JANUARY_DATABASE_HOST: database
+      JANUARY_DATABASE_PORT: "5432"
+      JANUARY_DATABASE_NAME: ${JANUARY_DATABASE_NAME:?JANUARY_DATABASE_NAME is required}
+      JANUARY_DATABASE_USER: ${JANUARY_DATABASE_USER:?JANUARY_DATABASE_USER is required}
+      JANUARY_DATABASE_PASSWORD: ${JANUARY_DATABASE_PASSWORD:?JANUARY_DATABASE_PASSWORD is required}
+      JANUARY_REDIS_URL: redis://redis:6379/0
+      JANUARY_QDRANT_URL: http://qdrant:6333
+      JANUARY_RATE_LIMIT_ENABLED: "true"
+      JANUARY_TELEGRAM_ENABLED: "true"
+      JANUARY_TELEGRAM_BOT_TOKEN: ${JANUARY_TELEGRAM_BOT_TOKEN:?JANUARY_TELEGRAM_BOT_TOKEN is required}
+      JANUARY_TELEGRAM_DELIVERY_MODE: webhook
+      JANUARY_TELEGRAM_PLATFORM_CONNECTION_ID: ${JANUARY_TELEGRAM_PLATFORM_CONNECTION_ID:?JANUARY_TELEGRAM_PLATFORM_CONNECTION_ID is required}
+      JANUARY_TELEGRAM_WEBHOOK_SECRET_TOKEN: ${JANUARY_TELEGRAM_WEBHOOK_SECRET_TOKEN:?JANUARY_TELEGRAM_WEBHOOK_SECRET_TOKEN is required}
+      JANUARY_TELEGRAM_WEBHOOK_PUBLIC_BASE_URL: ${JANUARY_TELEGRAM_WEBHOOK_PUBLIC_BASE_URL:?JANUARY_TELEGRAM_WEBHOOK_PUBLIC_BASE_URL is required}
+      JANUARY_LLM_ENABLED: "true"
+      JANUARY_LLM_PRIMARY_PROVIDER: openai
+      JANUARY_LLM_OPENAI_MODEL: ${JANUARY_LLM_OPENAI_MODEL:?JANUARY_LLM_OPENAI_MODEL is required}
+      JANUARY_LLM_OPENAI_API_KEY: ${JANUARY_LLM_OPENAI_API_KEY:?JANUARY_LLM_OPENAI_API_KEY is required}
+      JANUARY_COMMAND_WORKER_ENABLED: "true"
+      JANUARY_OUTBOUND_DELIVERY_ENABLED: "true"
+      JANUARY_RETENTION_WORKER_ENABLED: "true"
+      JANUARY_METRICS_ENABLED: "true"
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  dispatcher:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["python", "-m", "app.runtime.ingress_outbox_dispatcher"]
+    environment: *january-staging-app-env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  conversation:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["python", "-m", "app.runtime.conversation_worker"]
+    environment: *january-staging-app-env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  planning:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["python", "-m", "app.runtime.response_planning_worker"]
+    environment: *january-staging-app-env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  commands:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["python", "-m", "app.runtime.telegram_command_worker"]
+    environment: *january-staging-app-env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  outbound:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["python", "-m", "app.runtime.outbound_delivery_worker"]
+    environment: *january-staging-app-env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  retention:
+    image: ${JANUARY_BACKEND_IMAGE:?JANUARY_BACKEND_IMAGE is required}
+    command: ["python", "-m", "app.runtime.retention_worker"]
+    environment: *january-staging-app-env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  january-spec020-postgres:
+  january-spec020-qdrant:

@@ -1,5 +1,11 @@
 # Deployment
 
+SPEC-020 adds the target-neutral deployment lifecycle and staging-shaped
+Compose artifact. Use `docs/runbooks/production-operations.md` for startup,
+drain, secret rotation, failure recovery, rollback, and evidence requirements.
+`compose.staging.yaml` requires externally supplied values and contains no
+production secret defaults; it is not a production orchestrator contract.
+
 Before deployment run the canonical validators, take a PostgreSQL backup, check
 schema compatibility, and verify required secret *presence* without printing
 values. Preflight that Telegram uses exactly one of polling or webhook mode.

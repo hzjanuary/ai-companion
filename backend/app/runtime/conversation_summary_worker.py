@@ -31,6 +31,7 @@ from app.infrastructure.database.database import Database
 from app.infrastructure.database.summaries import SqlAlchemySummaryRepository
 from app.infrastructure.model_providers import create_model_provider
 from app.infrastructure.rate_limit import RateLimitUnavailable, RedisRateLimiter
+from app.runtime.lifecycle import RuntimeLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -247,14 +248,17 @@ async def run(once: bool) -> None:
         return
     database = Database(settings)
     await database.start()
+    lifecycle = RuntimeLifecycle("conversation_summary_worker")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             processed = await consume_once(settings, database)
             if once:
                 return
             if processed == 0:
-                await asyncio.sleep(settings.planning_job_poll_interval_seconds)
+                await lifecycle.wait(settings.planning_job_poll_interval_seconds)
     finally:
+        lifecycle.close()
         await database.stop()
 
 

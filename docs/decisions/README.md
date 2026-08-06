@@ -28,3 +28,4 @@ documents here as real choices are accepted, then index them in this file.
 - [0015 Operational Recovery and Provider Concurrency](0015-operational-recovery-and-provider-concurrency.md)
 - [0016 Conversation Summary Retention Boundary](0016-conversation-summary-retention-boundary.md)
 - [0017 Explicit Memory Semantic Index](0017-explicit-memory-semantic-index.md)
+- [0018 Production Runtime Operations](0018-production-runtime-operations.md)

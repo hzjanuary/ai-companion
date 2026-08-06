@@ -58,6 +58,7 @@ from app.infrastructure.database.safety import SqlAlchemySafetyRepository
 from app.infrastructure.model_providers import create_model_provider
 from app.infrastructure.rate_limit import RateLimitUnavailable, RedisRateLimiter
 from app.infrastructure.telemetry import InMemoryMetricsRecorder
+from app.runtime.lifecycle import RuntimeLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -599,14 +600,17 @@ async def run() -> None:
         InMemoryMetricsRecorder() if settings.metrics_enabled else NoOpMetricsRecorder()
     )
     await database.start()
+    lifecycle = RuntimeLifecycle("response_planning_worker")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             processed = await consume_once(settings, database, telemetry=telemetry)
             if processed == 0:
-                await asyncio.sleep(settings.planning_job_poll_interval_seconds)
+                await lifecycle.wait(settings.planning_job_poll_interval_seconds)
     except asyncio.CancelledError:
         raise
     finally:
+        lifecycle.close()
         await database.stop()
 
 

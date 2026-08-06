@@ -27,6 +27,7 @@ from app.infrastructure.semantic_memory import (
     create_semantic_index,
     embed_with_controls,
 )
+from app.runtime.lifecycle import RuntimeLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -194,14 +195,17 @@ async def run(once: bool) -> None:
         return
     database = Database(settings)
     await database.start()
+    lifecycle = RuntimeLifecycle("semantic_memory_index_worker")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             processed = await consume_once(settings, database)
             if once:
                 return
             if not processed:
-                await asyncio.sleep(settings.planning_job_poll_interval_seconds)
+                await lifecycle.wait(settings.planning_job_poll_interval_seconds)
     finally:
+        lifecycle.close()
         await database.stop()
 
 

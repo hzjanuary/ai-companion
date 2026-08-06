@@ -9,6 +9,7 @@ from app.infrastructure.database.database import Database
 from app.infrastructure.database.ingress import SqlAlchemyDurableIngressRepository
 from app.infrastructure.queue.redis_streams import RedisIngressQueue
 from app.infrastructure.telemetry import InMemoryMetricsRecorder
+from app.runtime.lifecycle import RuntimeLifecycle
 
 
 async def dispatch_once(
@@ -59,14 +60,17 @@ async def run() -> None:
     repository = SqlAlchemyDurableIngressRepository(
         database.session_factory, settings.ingress_event_schema_version
     )
+    lifecycle = RuntimeLifecycle("ingress_dispatcher")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             processed = await dispatch_once(settings, repository, queue, telemetry)
             if processed == 0:
-                await asyncio.sleep(settings.ingress_outbox_poll_interval_seconds)
+                await lifecycle.wait(settings.ingress_outbox_poll_interval_seconds)
     except asyncio.CancelledError:
         raise
     finally:
+        lifecycle.close()
         await queue.aclose()
         await database.stop()
 

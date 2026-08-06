@@ -483,7 +483,41 @@ class Settings(BaseSettings):
                 raise ValueError("demo live mode requires demo_allowed_chat_ids")
             if not self.llm_enabled or not self.outbound_delivery_enabled:
                 raise ValueError("demo live mode requires LLM and outbound delivery")
+        if self.environment in {"staging", "production"}:
+            if self.log_level == "DEBUG":
+                raise ValueError("DEBUG logging is not allowed outside local/test")
+            if self.database_password.get_secret_value() == "january-local":
+                raise ValueError(
+                    "the local database password must be replaced in staging/production"
+                )
+            if self.database_host in {"127.0.0.1", "localhost", "::1"}:
+                raise ValueError(
+                    "staging/production database_host must not use loopback"
+                )
+            redis_host = urlparse(self.redis_url.get_secret_value()).hostname
+            if redis_host in {"127.0.0.1", "localhost", "::1"}:
+                raise ValueError("staging/production redis_url must not use loopback")
         return self
+
+    def safe_configuration_fingerprint(self) -> dict[str, str | bool | int]:
+        """Return allowlisted configuration metadata without secret material."""
+
+        return {
+            "environment": self.environment,
+            "log_level": self.log_level,
+            "telegram_enabled": self.telegram_enabled,
+            "telegram_delivery_mode": self.telegram_delivery_mode,
+            "llm_enabled": self.llm_enabled,
+            "llm_primary_provider": self.llm_primary_provider,
+            "outbound_delivery_enabled": self.outbound_delivery_enabled,
+            "command_worker_enabled": self.command_worker_enabled,
+            "conversation_summaries_enabled": self.conversation_summaries_enabled,
+            "semantic_memory_enabled": self.semantic_memory_enabled,
+            "metrics_enabled": self.metrics_enabled,
+            "rate_limit_enabled": self.rate_limit_enabled,
+            "provider_concurrency_enabled": self.provider_concurrency_enabled,
+            "database_pool_size": self.database_pool_size,
+        }
 
     @property
     def resolved_database_url(self) -> URL:

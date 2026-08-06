@@ -28,6 +28,7 @@ from app.infrastructure.telegram.normalizer import (
 )
 from app.infrastructure.telegram.updates import parse_telegram_update
 from app.infrastructure.telemetry import InMemoryMetricsRecorder
+from app.runtime.lifecycle import RuntimeLifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -180,25 +181,28 @@ async def run() -> None:
         database.session_factory,
         stickers_enabled=bool(settings.telegram_sticker_mapping),
     )
+    lifecycle = RuntimeLifecycle("conversation_worker")
+    lifecycle.install()
     try:
-        while True:
+        while not lifecycle.stopping:
             try:
                 processed = await consume_once(
                     settings, database, queue, processor, telemetry=telemetry
                 )
                 if processed == 0:
-                    await asyncio.sleep(
+                    await lifecycle.wait(
                         settings.conversation_worker_poll_interval_seconds
                     )
             except QueuePayloadError:
                 logger.exception("conversation queue payload rejected")
-                await asyncio.sleep(settings.conversation_worker_poll_interval_seconds)
+                await lifecycle.wait(settings.conversation_worker_poll_interval_seconds)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("conversation worker transient failure")
-                await asyncio.sleep(settings.conversation_worker_poll_interval_seconds)
+                await lifecycle.wait(settings.conversation_worker_poll_interval_seconds)
     finally:
+        lifecycle.close()
         await queue.aclose()
         await database.stop()
 
