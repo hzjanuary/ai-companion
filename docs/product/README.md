@@ -36,6 +36,7 @@ contract, implementation, and executable tests.
 - [SPEC-018 Telegram Conversation Summaries and Bounded Context Compression](specs/SPEC-018-telegram-conversation-summaries-and-context-compression.md)
 - [SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index](specs/SPEC-019-explicit-memory-semantic-retrieval-and-qdrant.md)
 - [SPEC-020 Production Deployment, Secrets, and Runtime Operations](specs/SPEC-020-production-deployment-secrets-and-runtime-operations.md)
+- [SPEC-021 Authenticated Operator and Group Administration Control Plane](specs/SPEC-021-authenticated-operator-and-group-administration-control-plane.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Roadmap State
@@ -44,8 +45,11 @@ SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` pending a dedicated
 nonproduction Zalo OA/application. Its outstanding live checks do not block
 the Telegram MVP. SPEC-019 is the latest completed Telegram explicit-memory
 retrieval track. SPEC-020 is the Product Owner-selected production deployment
-design and awaits implementation decisions; its product SPEC does not
-authorize runtime changes.
+design and its repository implementation is an approved candidate pending
+external deployment acceptance. SPEC-021 is the next product specification
+for the authenticated operator and group administration control plane; it
+authorizes product design only until its implementation phase is explicitly
+started.
 
 ## Update Rule
 

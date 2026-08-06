@@ -1857,6 +1857,7 @@ SPEC-017 Telegram Ambient Selective Participation and Social Response Policy
 SPEC-018 Telegram Conversation Summaries and Bounded Context Compression
 SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index
 SPEC-020 Production Deployment, Secrets, and Runtime Operations
+SPEC-021 Authenticated Operator and Group Administration Control Plane
 ```
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`: its Phase 1
@@ -1865,9 +1866,13 @@ operator-owned dedicated nonproduction OA/application. This Zalo-only gate is
 not on the Telegram MVP critical path. SPEC-015 and SPEC-016 are completed
 Telegram observability and operational-reliability work. SPEC-019 is the latest
 completed explicit-memory semantic-retrieval track. SPEC-020 is the Product
-Owner-selected production deployment design; implementation remains gated on
-hosting, secrets, recovery, and operations decisions. SPEC-014 remains deferred
-and no Zalo runtime is authorized.
+Owner-selected production deployment design and its repository implementation
+is an approved candidate pending external deployment acceptance. SPEC-021 is
+the next control-plane product specification for authenticated operators,
+tenant/resource authorization, group administration, revisions, and audit; it
+does not authorize runtime implementation until its implementation phase is
+explicitly started. SPEC-014 remains deferred and no Zalo runtime is
+authorized.
 
 Each SPEC should define:
 
