@@ -47,6 +47,7 @@ services:
       JANUARY_DATABASE_NAME: ${JANUARY_DATABASE_NAME:?JANUARY_DATABASE_NAME is required}
       JANUARY_DATABASE_USER: ${JANUARY_DATABASE_USER:?JANUARY_DATABASE_USER is required}
       JANUARY_DATABASE_PASSWORD: ${JANUARY_DATABASE_PASSWORD:?JANUARY_DATABASE_PASSWORD is required}
+      JANUARY_REDIS_URL: redis://redis:6379/0
     depends_on:
       database:
         condition: service_healthy

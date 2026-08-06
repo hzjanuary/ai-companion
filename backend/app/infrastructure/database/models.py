@@ -1072,3 +1072,159 @@ class OperationalRecoveryEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     actor: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class ControlTenantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_tenants"
+    __table_args__ = (UniqueConstraint("slug"),)
+
+    slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+
+
+class ControlOperatorIdentityModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_operator_identities"
+    __table_args__ = (UniqueConstraint("issuer", "subject"),)
+
+    issuer: Mapped[str] = mapped_column(String(255), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(320))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ControlOperatorMembershipModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_operator_memberships"
+    __table_args__ = (UniqueConstraint("tenant_id", "identity_id"),)
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    identity_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_operator_identities.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ControlAssistantBindingModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_assistant_bindings"
+    __table_args__ = (UniqueConstraint("tenant_id", "assistant_id"),)
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    assistant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("assistants.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+
+
+class ControlConnectionBindingModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_connection_bindings"
+    __table_args__ = (UniqueConstraint("tenant_id", "connection_id"),)
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    connection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_connections.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+
+class ControlGroupBindingModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_group_bindings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "connection_id", "external_group_id"),
+    )
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    connection_id: Mapped[UUID] = mapped_column(
+        ForeignKey("platform_connections.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    external_group_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    settings: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
+    )
+    current_revision: Mapped[int] = mapped_column(default=0, nullable=False)
+
+
+class ControlGroupRevisionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_group_configuration_revisions"
+    __table_args__ = (UniqueConstraint("group_id", "revision"),)
+
+    group_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_group_bindings.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    revision: Mapped[int] = mapped_column(nullable=False)
+    parent_revision: Mapped[int | None] = mapped_column()
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    actor_identity_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_operator_identities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reason: Mapped[str | None] = mapped_column(String(255))
+
+
+class ControlAuditEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_audit_events"
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    actor_identity_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("control_operator_identities.id", ondelete="RESTRICT"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(255))
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        default=dict,
+        server_default=sql_text("'{}'::jsonb"),
+        nullable=False,
+    )
+
+
+class ControlIdempotencyKeyModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "control_idempotency_keys"
+    __table_args__ = (UniqueConstraint("tenant_id", "identity_id", "operation", "key"),)
+
+    tenant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_tenants.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    identity_id: Mapped[UUID] = mapped_column(
+        ForeignKey("control_operator_identities.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    operation: Mapped[str] = mapped_column(String(120), nullable=False)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    response_status: Mapped[int] = mapped_column(nullable=False)
+    response_body: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

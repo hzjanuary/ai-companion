@@ -208,6 +208,11 @@ class Settings(BaseSettings):
     demo_live_telegram_verification_enabled: bool = False
     demo_allowed_chat_ids: tuple[str, ...] = ()
     demo_runtime_directory: str = ".runtime/january-demo"
+    control_plane_enabled: bool = False
+    control_plane_jwt_secret: SecretStr | None = None
+    control_plane_jwt_issuer: str | None = None
+    control_plane_jwt_audience: str | None = None
+    control_plane_session_ttl_seconds: int = Field(default=3600, ge=60, le=86_400)
 
     @field_validator("telegram_sticker_mapping")
     @classmethod
@@ -384,6 +389,17 @@ class Settings(BaseSettings):
     def validate_delivery_configuration(self) -> "Settings":
         if self.metrics_export_enabled and not self.metrics_enabled:
             raise ValueError("metrics_export_enabled requires metrics_enabled")
+        if self.control_plane_enabled:
+            if self.control_plane_jwt_secret is None:
+                raise ValueError("control_plane_jwt_secret is required when enabled")
+            if len(self.control_plane_jwt_secret.get_secret_value()) < 32:
+                raise ValueError(
+                    "control_plane_jwt_secret must contain at least 32 characters"
+                )
+            if not self.control_plane_jwt_issuer or not self.control_plane_jwt_audience:
+                raise ValueError(
+                    "control plane issuer and audience are required when enabled"
+                )
         if self.telegram_enabled and self.telegram_bot_token is None:
             raise ValueError(
                 "telegram_bot_token is required when telegram_enabled is true"

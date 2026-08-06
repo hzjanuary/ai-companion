@@ -4,7 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.application.ports.concurrency import ConcurrencyLimiter
@@ -19,6 +19,9 @@ from app.infrastructure.telegram.adapter import create_telegram_adapter
 from app.infrastructure.telemetry import (
     InMemoryMetricsRecorder,
     MetricsHttpExporter,
+)
+from app.interface.http.control_plane import (
+    create_router as create_control_plane_router,
 )
 from app.interface.http.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.interface.http.models import ErrorResponse
@@ -68,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.concurrency_limiter = concurrency_limiter
         app.state.telemetry = telemetry
         app.state.metrics_exporter = metrics_exporter
+        app.state.settings = configured_settings
         if metrics_exporter is not None:
             await metrics_exporter.start()
         try:
@@ -96,8 +100,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.concurrency_limiter = concurrency_limiter
     app.state.telemetry = telemetry
     app.state.metrics_exporter = metrics_exporter
+    app.state.settings = configured_settings
     app.add_middleware(RequestIdMiddleware)
     app.include_router(create_router(configured_settings))
+    if configured_settings.control_plane_enabled:
+        app.include_router(create_control_plane_router(configured_settings))
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(
+        request: Request, exc: HTTPException
+    ) -> JSONResponse:
+        if not request.url.path.startswith("/control/"):
+            return JSONResponse(
+                status_code=exc.status_code, content={"detail": exc.detail}
+            )
+        request_id = getattr(request.state, "request_id", "unknown")
+        category = {
+            401: "auth_required",
+            403: "forbidden",
+            404: "not_found_or_forbidden",
+            409: "conflict",
+            422: "validation_error",
+            503: "dependency_unavailable",
+        }.get(exc.status_code, "validation_error")
+        response = JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error_type": category,
+                "message": str(exc.detail),
+                "request_id": request_id,
+            },
+        )
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
