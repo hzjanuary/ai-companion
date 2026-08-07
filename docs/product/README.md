@@ -38,19 +38,21 @@ contract, implementation, and executable tests.
 - [SPEC-020 Production Deployment, Secrets, and Runtime Operations](specs/SPEC-020-production-deployment-secrets-and-runtime-operations.md)
 - [SPEC-021 Authenticated Operator and Group Administration Control Plane](specs/SPEC-021-authenticated-operator-and-group-administration-control-plane.md)
 - [SPEC-022 Telegram Production Integration and Live Acceptance](specs/SPEC-022-telegram-production-integration-and-live-acceptance.md)
+- [SPEC-023 Production Observability, SLOs, Alerting, and Incident Operations](specs/SPEC-023-production-observability-slos-alerting-and-incident-operations.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Roadmap State
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE` pending a dedicated
 nonproduction Zalo OA/application. Its outstanding live checks do not block
-the Telegram MVP. SPEC-019 is the latest completed Telegram explicit-memory
-retrieval track. SPEC-020 is the Product Owner-selected production deployment
-design and its repository implementation is an approved candidate pending
-external deployment acceptance. SPEC-021 is the next product specification
-for the authenticated operator and group administration control plane; it
-authorizes product design only until its implementation phase is explicitly
-started.
+the Telegram MVP. SPEC-001 through SPEC-022 are complete; SPEC-022 has been
+approved and committed, with its live Telegram acceptance remaining an
+externally gated operational step. SPEC-023 is implemented as an approved
+candidate: the production observability contract (SLI catalog, SLO targets and
+error budget over a rolling 28-day window, content-safe alert rules, and
+incident operations) is declared in code and documentation with no schema
+migration, pending Product Owner and operating-owner approval of the proposed
+objectives and notification channels.
 
 ## Update Rule
 

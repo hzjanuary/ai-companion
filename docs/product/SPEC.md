@@ -1859,6 +1859,7 @@ SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index
 SPEC-020 Production Deployment, Secrets, and Runtime Operations
 SPEC-021 Authenticated Operator and Group Administration Control Plane
 SPEC-022 Telegram Production Integration and Live Acceptance
+SPEC-023 Production Observability, SLOs, Alerting, and Incident Operations
 ```
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`: its Phase 1
@@ -1869,11 +1870,15 @@ Telegram observability and operational-reliability work. SPEC-019 is the latest
 completed explicit-memory semantic-retrieval track. SPEC-020 is the Product
 Owner-selected production deployment design and its repository implementation
 is an approved candidate pending external deployment acceptance. SPEC-021 is
-the next control-plane product specification for authenticated operators,
-tenant/resource authorization, group administration, revisions, and audit; it
-does not authorize runtime implementation until its implementation phase is
-explicitly started. SPEC-014 remains deferred and no Zalo runtime is
-authorized.
+the completed authenticated operator control plane. SPEC-022 is approved and
+committed; its live Telegram acceptance remains an externally gated
+operational step. SPEC-023 is implemented as an approved candidate: the SLI
+catalog, SLO targets with a rolling 28-day error budget, content-safe alert
+rules, and incident operations are declared in code and documentation with no
+schema migration; its proposed availability, delivery-confirmation, and
+recovery-backlog objectives and notification channels remain operating-owner
+approvals. SPEC-014 remains deferred and no Zalo runtime is authorized. Next
+bounded task: SPEC-024.
 
 Each SPEC should define:
 

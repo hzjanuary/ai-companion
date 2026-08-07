@@ -29,3 +29,5 @@ documents here as real choices are accepted, then index them in this file.
 - [0016 Conversation Summary Retention Boundary](0016-conversation-summary-retention-boundary.md)
 - [0017 Explicit Memory Semantic Index](0017-explicit-memory-semantic-index.md)
 - [0018 Production Runtime Operations](0018-production-runtime-operations.md)
+- [0019 SLO Computation and Alert-Evaluation Model](0019-slo-and-alert-evaluation-model.md)
+- [0020 Incident and Error-Budget State Representability](0020-incident-and-error-budget-state-representability.md)
