@@ -19,6 +19,8 @@ procedure that must be approved before production use.
 4. Take or verify the PostgreSQL backup and inspect dead letters, quarantines,
    stale leases, and pending work before changing external traffic.
 5. Confirm Telegram uses exactly one of webhook or polling mode.
+6. Verify bot identity against the approved connection record with the explicit
+   SPEC-022 operation; see [`live-acceptance.md`](live-acceptance.md).
 
 ## Startup and rollout
 
@@ -27,8 +29,10 @@ procedure that must be approved before production use.
 3. Start API replicas and verify `/live`, `/health`, `/ready`, and `/docs`.
 4. Start dispatcher and enabled workers. Confirm each role reports healthy
    lifecycle state and no unexpected backlog growth.
-5. Register or switch the Telegram webhook only after durable ingress is ready.
-   Never run polling for the same connection while the webhook is active.
+5. Register or switch the Telegram webhook only after durable ingress is ready,
+   using the explicit SPEC-022 lifecycle operation that verifies the resulting
+   Telegram state. Never run polling for the same connection while the webhook
+   is active.
 6. Run the dedicated staging smoke interaction before accepting traffic.
 
 API startup does not run migrations or start hidden worker loops. Optional
@@ -82,5 +86,8 @@ workers or Telegram ingress.
 
 Record release/configuration identifiers, lifecycle outcomes, dependency
 failures, and operator identity without raw messages, prompts, memory text,
-vectors, credentials, or provider bodies. For local validation, run
-`docker compose down` for the project and verify `docker compose ps` is empty.
+vectors, credentials, or provider bodies. Live acceptance runs produce the
+content-safe SPEC-022 evidence bundle via
+`uv run python -m app.runtime.acceptance_evidence collect --confirm-live-telegram`.
+For local validation, run `docker compose down` for the project and verify
+`docker compose ps` is empty.

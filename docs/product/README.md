@@ -37,6 +37,7 @@ contract, implementation, and executable tests.
 - [SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index](specs/SPEC-019-explicit-memory-semantic-retrieval-and-qdrant.md)
 - [SPEC-020 Production Deployment, Secrets, and Runtime Operations](specs/SPEC-020-production-deployment-secrets-and-runtime-operations.md)
 - [SPEC-021 Authenticated Operator and Group Administration Control Plane](specs/SPEC-021-authenticated-operator-and-group-administration-control-plane.md)
+- [SPEC-022 Telegram Production Integration and Live Acceptance](specs/SPEC-022-telegram-production-integration-and-live-acceptance.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Roadmap State

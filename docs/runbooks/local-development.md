@@ -81,6 +81,29 @@ uv run python -m app.runtime.ingress_outbox_dispatcher
 `remove --drop-pending-updates` is required to request pending-update removal.
 The poller refuses to run when Telegram reports an existing webhook.
 
+SPEC-022 connection readiness, webhook lifecycle, and mode-exclusivity
+operations provide verified, fail-closed alternatives (see
+[`live-acceptance.md`](live-acceptance.md)):
+
+```bash
+uv run python -m app.runtime.telegram_connection_operations verify \
+  --confirm-live-telegram --json
+uv run python -m app.runtime.telegram_connection_operations webhook-register \
+  --confirm-live-telegram --json
+uv run python -m app.runtime.telegram_connection_operations webhook-delete \
+  --confirm-live-telegram --confirm-delete-webhook --json
+uv run python -m app.runtime.telegram_connection_operations mode-verify \
+  --confirm-live-telegram --json
+```
+
+Each command contacts Telegram only after the explicit confirmation flag, never
+prints the bot token or webhook secret, and verifies the resulting Telegram
+state. The deterministic SPEC-022 proof uses fake adapters only:
+
+```bash
+./scripts/validate-live-acceptance.sh
+```
+
 ## Conversation Processing
 
 The conversation consumer is separate from the API, poller, and outbox

@@ -1858,6 +1858,7 @@ SPEC-018 Telegram Conversation Summaries and Bounded Context Compression
 SPEC-019 Explicit Memory Semantic Retrieval and Qdrant Derived Index
 SPEC-020 Production Deployment, Secrets, and Runtime Operations
 SPEC-021 Authenticated Operator and Group Administration Control Plane
+SPEC-022 Telegram Production Integration and Live Acceptance
 ```
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`: its Phase 1
