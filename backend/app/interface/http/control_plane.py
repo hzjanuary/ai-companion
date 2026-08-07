@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.domain.persistence import AssistantStatus, Platform, PlatformConnectionStatus
+from app.domain.safety import ReviewAction
+from app.infrastructure.database.database import Database
 from app.infrastructure.database.models import (
     AssistantModel,
     ControlAssistantBindingModel,
@@ -26,7 +28,13 @@ from app.infrastructure.database.models import (
     ControlOperatorIdentityModel,
     ControlOperatorMembershipModel,
     ControlTenantModel,
+    ConversationModel,
+    ParticipantModel,
     PlatformConnectionModel,
+    SafetyReviewItemModel,
+)
+from app.infrastructure.database.safety_protection import (
+    SqlAlchemySafetyModerationRepository,
 )
 from app.interface.http.dependencies import database_session
 
@@ -80,6 +88,16 @@ class GroupPatch(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
+class ReviewActionInput(BaseModel):
+    action: ReviewAction
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class ProtectionInput(BaseModel):
+    participant_id: UUID
+    protected: bool
+
+
 @dataclass(frozen=True)
 class Principal:
     identity: ControlOperatorIdentityModel
@@ -92,6 +110,33 @@ def settings_for(request: Request) -> Settings:
 
 def request_id_for(request: Request) -> str:
     return cast(str, getattr(request.state, "request_id", "unknown"))
+
+
+async def _conversation_for_group(
+    session: AsyncSession, tenant_id: UUID, group_id: UUID
+) -> ConversationModel | None:
+    """Resolve the runtime conversation bound to a control-plane group."""
+
+    group = await session.scalar(
+        select(ControlGroupBindingModel).where(
+            ControlGroupBindingModel.id == group_id,
+            ControlGroupBindingModel.tenant_id == tenant_id,
+        )
+    )
+    if group is None:
+        return None
+    conversation: ConversationModel | None = await session.scalar(
+        select(ConversationModel).where(
+            ConversationModel.platform_connection_id == group.connection_id,
+            ConversationModel.platform_conversation_id == group.external_group_id,
+        )
+    )
+    return conversation
+
+
+def _safety_repository(request: Request) -> SqlAlchemySafetyModerationRepository:
+    database = cast(Database, request.app.state.database)
+    return SqlAlchemySafetyModerationRepository(database.session_factory)
 
 
 async def principal_for(
@@ -980,6 +1025,157 @@ def create_router(settings: Settings) -> APIRouter:
         )
         await session.commit()
         return {"id": str(group.id), "revision": revision, "settings": group.settings}
+
+    @router.get("/tenants/{tenant_id}/groups/{group_id}/safety/aggregates")
+    async def safety_aggregates(
+        tenant_id: UUID,
+        group_id: UUID,
+        request: Request,
+        principal: Principal = Depends(principal_for),
+        session: AsyncSession = Depends(database_session),
+    ) -> dict[str, Any]:
+        await membership_for(session, principal, tenant_id)
+        conversation = await _conversation_for_group(session, tenant_id, group_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        repository = _safety_repository(request)
+        from app.application.safety import SafetyModerationService, signal_counts_view
+
+        service = SafetyModerationService(settings_for(request), repository)
+        signals = await service.aggregate(
+            conversation_id=conversation.id,
+            participant_id=None,
+        )
+        return signal_counts_view(signals)
+
+    @router.get("/tenants/{tenant_id}/groups/{group_id}/safety/review-items")
+    async def safety_review_items(
+        tenant_id: UUID,
+        group_id: UUID,
+        request: Request,
+        principal: Principal = Depends(principal_for),
+        session: AsyncSession = Depends(database_session),
+    ) -> dict[str, Any]:
+        await membership_for(session, principal, tenant_id)
+        conversation = await _conversation_for_group(session, tenant_id, group_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        repository = _safety_repository(request)
+        items = await repository.list_review_items(conversation_id=conversation.id)
+        return {
+            "items": [
+                {
+                    "id": str(item.item_id),
+                    "category": item.category.value,
+                    "stage": item.stage,
+                    "status": item.status.value,
+                    "outcome_counts": item.outcome_counts,
+                    "protection_state": item.protection_state,
+                    "created_at": item.created_at.isoformat(),
+                }
+                for item in items
+            ]
+        }
+
+    @router.post(
+        "/tenants/{tenant_id}/groups/{group_id}/safety/review-items/{item_id}/actions"
+    )
+    async def safety_review_action(
+        tenant_id: UUID,
+        group_id: UUID,
+        item_id: UUID,
+        payload: ReviewActionInput,
+        request: Request,
+        principal: Principal = Depends(principal_for),
+        session: AsyncSession = Depends(database_session),
+    ) -> dict[str, Any]:
+        member = await membership_for(session, principal, tenant_id)
+        if member.role not in WRITE_ROLES:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        conversation = await _conversation_for_group(session, tenant_id, group_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        item = await session.scalar(
+            select(SafetyReviewItemModel).where(
+                SafetyReviewItemModel.id == item_id,
+                SafetyReviewItemModel.conversation_id == conversation.id,
+            )
+        )
+        if item is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        repository = _safety_repository(request)
+        changed = await repository.apply_review_action(
+            item_id=item_id,
+            action=payload.action,
+            actor_participant_id=None,
+            source=f"control_plane:{payload.action.value}",
+        )
+        await audit(
+            session,
+            request,
+            tenant_id,
+            principal,
+            "safety.review.action",
+            "success" if changed else "unchanged",
+            "safety_review_item",
+            item_id,
+        )
+        await session.commit()
+        return {"item_id": str(item_id), "changed": changed}
+
+    @router.post("/tenants/{tenant_id}/groups/{group_id}/safety/protection")
+    async def safety_protection(
+        tenant_id: UUID,
+        group_id: UUID,
+        payload: ProtectionInput,
+        request: Request,
+        principal: Principal = Depends(principal_for),
+        session: AsyncSession = Depends(database_session),
+    ) -> dict[str, Any]:
+        member = await membership_for(session, principal, tenant_id)
+        if member.role not in WRITE_ROLES:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        conversation = await _conversation_for_group(session, tenant_id, group_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        participant = await session.scalar(
+            select(ParticipantModel).where(
+                ParticipantModel.id == payload.participant_id,
+                ParticipantModel.conversation_id == conversation.id,
+            )
+        )
+        if participant is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        repository = _safety_repository(request)
+        if payload.protected:
+            await repository.protect(
+                conversation_id=conversation.id,
+                participant_id=participant.id,
+                actor_participant_id=None,
+                source="control_plane",
+            )
+        else:
+            await repository.restore_targeting(
+                conversation_id=conversation.id,
+                participant_id=participant.id,
+                actor_participant_id=None,
+                source="control_plane",
+            )
+        await audit(
+            session,
+            request,
+            tenant_id,
+            principal,
+            "safety.protection.set",
+            "success",
+            "participant",
+            participant.id,
+        )
+        await session.commit()
+        return {
+            "participant_id": str(participant.id),
+            "protected": payload.protected,
+        }
 
     @router.get("/tenants/{tenant_id}/audit-events")
     async def audit_events(

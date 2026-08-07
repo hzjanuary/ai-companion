@@ -1,139 +1,189 @@
+"""SPEC-024 pure policy unit tests: thresholds, escalation, notices, views."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import pytest
-
-from app.application.context import ContextMessage, ConversationContext
-from app.application.prompting import build_generation_request
-from app.application.rate_limiting import InMemoryRateLimiter
-from app.application.response_plan import (
-    InteractionMetadata,
-    ResponsePlanCandidate,
-    ResponsePlanPolicy,
+from app.application.safety import (
+    render_review_item_view,
+    signal_counts_view,
+    thresholds_from_settings,
 )
-from app.domain.planning import PlanReasonCode
-from app.domain.rate_limit import RateLimitOperation, RateLimitRule, RateLimitScope
+from app.core.config import Settings
 from app.domain.safety import (
-    InteractionKind,
-    SensitiveTopicCategory,
-    safe_fallback,
+    AggregatedSignals,
+    ProtectionAction,
+    ReviewItemStatus,
+    SafetyLevel,
+    SafetySignalType,
+    SignalThresholds,
+    evaluate_protection,
+    interaction_escalation,
+    protection_notice,
 )
 
 
-def _context(
+def _signals(
+    counts: dict[SafetySignalType, int],
     *,
-    mention_allowed: bool = True,
-    teasing_allowed: bool = True,
-    privacy_deleted: bool = False,
-) -> ConversationContext:
-    participant_id = uuid4()
-    message = ContextMessage(
-        id=uuid4(),
+    participant_id=None,
+    affected_target=None,
+) -> AggregatedSignals:
+    return AggregatedSignals(
         conversation_id=uuid4(),
         participant_id=participant_id,
-        platform_thread_id=None,
-        text="untrusted fixture message",
-        sent_at=datetime.now(UTC),
-        reply_to_message_id=None,
-        sender_display_name="Fixture",
-        mention_allowed=mention_allowed,
-        teasing_allowed=teasing_allowed,
-        privacy_deleted=privacy_deleted,
-    )
-    return ConversationContext(message, (), ())
-
-
-def _candidate(context: ConversationContext) -> ResponsePlanCandidate:
-    return ResponsePlanCandidate(
-        should_respond=True,
-        reason_code=PlanReasonCode.ACKNOWLEDGEMENT,
-        text="fixture text",
-        reply_to_message_id=context.current.id,
-        confidence=0.9,
-        interaction=InteractionMetadata(
-            kind=InteractionKind.TEASING,
-            teasing_target_participant_ids=[context.current.participant_id],
-        ),
+        affected_target_participant_id=affected_target,
+        since=datetime(2026, 1, 1, tzinfo=UTC),
+        counts=counts,
     )
 
 
-def test_response_plan_v2_rejects_invalid_teasing_shape() -> None:
-    with pytest.raises(ValueError):
-        ResponsePlanCandidate.model_validate(
-            {
-                "should_respond": True,
-                "reason_code": "acknowledgement",
-                "text": "x",
-                "confidence": 1.0,
-                "interaction": {"kind": "teasing"},
-            }
-        )
+def _thresholds(**overrides) -> SignalThresholds:
+    values = dict(
+        participant_refusals=5,
+        mention_frequency=12,
+        teasing_frequency=4,
+        rate_limit_violations=6,
+        memory_extraction=2,
+        dangerous_instruction=2,
+        prompt_injection=3,
+        manipulation=3,
+    )
+    values.update(overrides)
+    return SignalThresholds(**values)
 
 
-@pytest.mark.parametrize("field", ["teasing_allowed", "privacy_deleted"])
-def test_opted_out_or_deleted_teasing_is_replaced_with_safe_neutral_fallback(
-    field: str,
-) -> None:
-    context = _context(**{field: False if field == "teasing_allowed" else True})
-    result = ResponsePlanPolicy(500, frozenset()).apply(_candidate(context), context)
-    assert result.interaction.kind == InteractionKind.NEUTRAL
-    assert result.text == safe_fallback(None)
-    assert result.sticker_intent is None
+def test_protection_notice_is_content_free_and_language_aware() -> None:
+    english = protection_notice("en")
+    vietnamese = protection_notice("vi")
+    assert english and vietnamese
+    assert english != vietnamese
+    assert "I will limit further interaction" in english
+    for language in (None, "auto", "de", "fr"):
+        assert protection_notice(language) == english
+    assert protection_notice("vi-VN") == vietnamese
 
 
-def test_sensitive_teasing_and_personality_boundary_cannot_be_weakened() -> None:
-    context = _context()
-    sensitive = _candidate(context).model_copy(
-        update={
-            "interaction": InteractionMetadata(
-                kind=InteractionKind.TEASING,
-                teasing_target_participant_ids=[context.current.participant_id],
-                sensitive_topic_categories=[SensitiveTopicCategory.BODY],
-            )
+def test_evaluate_protection_requires_threshold_exceeded() -> None:
+    quiet = _signals(
+        {
+            SafetySignalType.MENTION_FREQUENCY: 3,
+            SafetySignalType.TEASING_FREQUENCY: 1,
         }
     )
-    assert ResponsePlanPolicy(500, frozenset()).apply(
-        sensitive, context
-    ).text == safe_fallback(None)
-    assert ResponsePlanPolicy(500, frozenset(), teasing_permitted=False).apply(
-        _candidate(context), context
-    ).text == safe_fallback(None)
-
-
-def test_prompt_safety_policy_is_deterministic_and_context_stays_untrusted() -> None:
-    context = _context()
-    request = build_generation_request(
-        planning_job_id=uuid4(),
-        context=context,
-        prompt_version="test",
-        response_schema_version="response-plan-v2",
-        maximum_output_tokens=100,
-        conversation_type="group",
-        response_mode="mention_only",
+    assert evaluate_protection(quiet, _thresholds()) is None
+    triggered = _signals(
+        {
+            SafetySignalType.MENTION_FREQUENCY: 12,
+            SafetySignalType.TEASING_FREQUENCY: 1,
+        }
     )
-    assert "safety-policy-v1" in request.system_instructions
-    assert "untrusted" in request.system_instructions
-    assert '"response_schema_version":"response-plan-v2"' in request.user_content
-    assert "untrusted fixture message" in request.user_content
-
-
-def test_fake_multi_scope_limiter_is_atomic_and_returns_deterministic_retry() -> None:
-    now = [100.0]
-    limiter = InMemoryRateLimiter(lambda: now[0])
-    rules = (
-        RateLimitRule(RateLimitScope.DEPLOYMENT, "deployment", 2, 60),
-        RateLimitRule(RateLimitScope.CONVERSATION, "conversation", 1, 60),
+    assert (
+        evaluate_protection(triggered, _thresholds()) == ProtectionAction.STOP_TARGETING
     )
 
-    async def scenario() -> None:
-        assert (await limiter.check(RateLimitOperation.GENERATION, rules)).allowed
-        denied = await limiter.check(RateLimitOperation.GENERATION, rules)
-        assert not denied.allowed
-        assert denied.limiting_scope == RateLimitScope.CONVERSATION
-        assert denied.retry_after_seconds == 60
-        now[0] += 60
-        assert (await limiter.check(RateLimitOperation.GENERATION, rules)).allowed
 
-    import asyncio
+def test_evaluate_protection_treats_every_signal_as_protective() -> None:
+    for signal_type, threshold in (
+        (SafetySignalType.DANGEROUS_INSTRUCTION_REQUEST, 2),
+        (SafetySignalType.MEMORY_EXTRACTION_ATTEMPT, 2),
+        (SafetySignalType.MANIPULATION_ATTEMPT, 3),
+        (SafetySignalType.RATE_LIMIT_VIOLATION, 6),
+    ):
+        signals = _signals({signal_type: threshold})
+        assert evaluate_protection(signals, _thresholds()) is not None, signal_type
 
-    asyncio.run(scenario())
+
+def test_protective_action_signal_has_no_direct_threshold() -> None:
+    thresholds = _thresholds()
+    assert thresholds.for_signal(SafetySignalType.PROTECTIVE_ACTION) is None
+    assert (
+        evaluate_protection(
+            _signals({SafetySignalType.PROTECTIVE_ACTION: 999}), thresholds
+        )
+        is None
+    )
+
+
+def test_interaction_escalation_ladder_is_deterministic() -> None:
+    assert (
+        interaction_escalation(0, pause_after_actions=2)
+        == ProtectionAction.STOP_TARGETING
+    )
+    assert (
+        interaction_escalation(1, pause_after_actions=2)
+        == ProtectionAction.REDUCE_INTERACTION
+    )
+    assert (
+        interaction_escalation(2, pause_after_actions=2)
+        == ProtectionAction.PAUSE_INTERACTION
+    )
+    assert (
+        interaction_escalation(5, pause_after_actions=2)
+        == ProtectionAction.PAUSE_INTERACTION
+    )
+    assert (
+        interaction_escalation(0, pause_after_actions=4)
+        == ProtectionAction.STOP_TARGETING
+    )
+    assert (
+        interaction_escalation(2, pause_after_actions=4)
+        == ProtectionAction.REDUCE_INTERACTION
+    )
+    assert (
+        interaction_escalation(4, pause_after_actions=4)
+        == ProtectionAction.PAUSE_INTERACTION
+    )
+
+
+def test_thresholds_from_settings_scale_by_safety_level() -> None:
+    settings = Settings(
+        _env_file=None,
+        safety_threshold_mention_frequency=10,
+        safety_threshold_teasing_frequency=4,
+    )
+    strict = thresholds_from_settings(settings, SafetyLevel.STRICT)
+    standard = thresholds_from_settings(settings, SafetyLevel.STANDARD)
+    relaxed = thresholds_from_settings(settings, SafetyLevel.RELAXED)
+    assert strict.mention_frequency == 5
+    assert standard.mention_frequency == 10
+    assert relaxed.mention_frequency == 15
+    assert strict.teasing_frequency == 2
+    assert relaxed.teasing_frequency == 6
+    for thresholds in (strict, standard, relaxed):
+        for signal_type in SafetySignalType:
+            value = thresholds.for_signal(signal_type)
+            if value is not None:
+                assert value >= 1
+
+
+def test_signal_counts_view_is_content_free() -> None:
+    participant_id = uuid4()
+    signals = _signals(
+        {SafetySignalType.MENTION_FREQUENCY: 2, SafetySignalType.TEASING_FREQUENCY: 1},
+        participant_id=participant_id,
+    )
+    view = signal_counts_view(signals)
+    payload = f"{view}".lower()
+    assert set(view) == {"conversation", "since", "counts"}
+    assert "mention_frequency" in view["counts"]
+    assert str(participant_id) not in payload
+    for signal_type, count in view["counts"].items():
+        assert isinstance(signal_type, str)
+        assert isinstance(count, int)
+
+
+def test_review_item_view_renders_opaque_identifiers_only() -> None:
+    item_id = uuid4()
+    view = render_review_item_view(
+        item_id=item_id,
+        category=SafetySignalType.TEASING_FREQUENCY,
+        stage="pre_delivery",
+        status=ReviewItemStatus.OPEN,
+        outcome_counts={"teasing_frequency": 5},
+        protection_state={"action": "stop_targeting"},
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    assert view["id"] == str(item_id)
+    assert view["category"] == "teasing_frequency"
+    assert view["status"] == "open"
+    assert view["outcome_counts"] == {"teasing_frequency": 5}

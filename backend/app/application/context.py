@@ -20,6 +20,7 @@ class ContextMessage:
     mention_allowed: bool
     teasing_allowed: bool
     privacy_deleted: bool = False
+    protected: bool = False
 
 
 @dataclass(frozen=True, slots=True)

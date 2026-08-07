@@ -213,6 +213,22 @@ class Settings(BaseSettings):
     control_plane_jwt_issuer: str | None = None
     control_plane_jwt_audience: str | None = None
     control_plane_session_ttl_seconds: int = Field(default=3600, ge=60, le=86_400)
+    safety_moderation_enabled: bool = False
+    safety_signal_window_seconds: int = Field(default=3600, ge=60, le=86_400)
+    safety_review_retention_days: int = Field(default=30, ge=1, le=90)
+    safety_default_teasing_cap: int = Field(default=3, ge=0, le=10)
+    safety_threshold_participant_refusals: int = Field(default=5, ge=1, le=100)
+    safety_threshold_mention_frequency: int = Field(default=12, ge=1, le=100)
+    safety_threshold_teasing_frequency: int = Field(default=4, ge=1, le=100)
+    safety_threshold_rate_limit_violations: int = Field(default=6, ge=1, le=100)
+    safety_threshold_memory_extraction: int = Field(default=2, ge=1, le=100)
+    safety_threshold_dangerous_instruction: int = Field(default=2, ge=1, le=100)
+    safety_threshold_prompt_injection: int = Field(default=3, ge=1, le=100)
+    safety_threshold_manipulation: int = Field(default=3, ge=1, le=100)
+    safety_pause_after_actions: int = Field(default=2, ge=1, le=10)
+    safety_fail_closed_alert_burst_window_seconds: int = Field(
+        default=900, ge=60, le=86_400
+    )
 
     @field_validator("telegram_sticker_mapping")
     @classmethod
@@ -532,6 +548,7 @@ class Settings(BaseSettings):
             "metrics_enabled": self.metrics_enabled,
             "rate_limit_enabled": self.rate_limit_enabled,
             "provider_concurrency_enabled": self.provider_concurrency_enabled,
+            "safety_moderation_enabled": self.safety_moderation_enabled,
             "database_pool_size": self.database_pool_size,
         }
 

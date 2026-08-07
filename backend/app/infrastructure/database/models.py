@@ -70,9 +70,14 @@ from app.domain.rate_limit import RateLimitOperation, RateLimitScope
 from app.domain.recovery import RecoveryDisposition, RecoveryKind, RecoveryReason
 from app.domain.safety import (
     InteractionKind,
+    ProtectionAction,
+    ReviewAction,
+    ReviewItemStatus,
+    SafetyLevel,
     SafetyOutcome,
     SafetyPolicyVersion,
     SafetyReasonCode,
+    SafetySignalType,
     SafetyStage,
 )
 from app.domain.summary import ConversationSummaryStatus
@@ -245,6 +250,12 @@ class ConversationConfigurationRevisionModel(UUIDPrimaryKeyMixin, TimestampMixin
         default=AmbientFrequency.NORMAL,
         nullable=False,
     )
+    safety_level: Mapped[SafetyLevel] = mapped_column(
+        string_enum(SafetyLevel, "configuration_safety_level"),
+        default=SafetyLevel.STANDARD,
+        nullable=False,
+    )
+    teasing_cap: Mapped[int] = mapped_column(default=3, nullable=False)
     default_length: Mapped[str | None] = mapped_column(String(16))
     formality: Mapped[str | None] = mapped_column(String(16))
     humor_level: Mapped[float | None] = mapped_column()
@@ -279,6 +290,7 @@ class ParticipantModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     teasing_allowed: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    protected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     privacy_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -931,6 +943,55 @@ class RateLimitEventModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     retry_after_seconds: Mapped[int | None] = mapped_column()
     configuration_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class SafetyReviewItemModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Bounded, content-free SPEC-024 moderation review queue item.
+
+    Carries categories, stage, outcome counts, opaque references, protection
+    state, and status only. Never message text, prompts, memories, usernames,
+    or raw platform identifiers (NFR-01/FR-12).
+    """
+
+    __tablename__ = "safety_review_items"
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    participant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), index=True
+    )
+    category: Mapped[SafetySignalType] = mapped_column(
+        string_enum(SafetySignalType, "safety_signal_type"), nullable=False
+    )
+    stage: Mapped[SafetyStage] = mapped_column(
+        string_enum(SafetyStage, "safety_decision_stage"), nullable=False
+    )
+    outcome_counts: Mapped[dict[str, int]] = mapped_column(
+        JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
+    )
+    protection_state: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=sql_text("'{}'::jsonb"), nullable=False
+    )
+    status: Mapped[ReviewItemStatus] = mapped_column(
+        string_enum(ReviewItemStatus, "safety_review_status"),
+        default=ReviewItemStatus.OPEN,
+        nullable=False,
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    action: Mapped[ReviewAction | None] = mapped_column(
+        string_enum(ReviewAction, "safety_review_action")
+    )
+    actor_participant_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), index=True
+    )
+    actioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str | None] = mapped_column(String(64))
+    protection_action: Mapped[ProtectionAction | None] = mapped_column(
+        string_enum(ProtectionAction, "safety_protection_action")
+    )
 
 
 class OutboundActionModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):

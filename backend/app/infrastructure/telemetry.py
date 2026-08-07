@@ -97,6 +97,9 @@ METRICS: Final[dict[str, MetricDefinition]] = {
     "january_safety_decisions_total": MetricDefinition(
         "counter", frozenset({"stage", "outcome", "reason"})
     ),
+    "january_safety_protective_actions_total": MetricDefinition(
+        "counter", frozenset({"action"})
+    ),
     "january_rate_limit_events_total": MetricDefinition(
         "counter", frozenset({"operation", "scope", "result"})
     ),

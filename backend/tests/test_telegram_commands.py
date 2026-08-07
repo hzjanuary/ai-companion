@@ -142,6 +142,38 @@ def test_command_grammar_is_bounded() -> None:
         ("stickers", "off", CommandOperation.CONFIGURATION, "set", False),
         ("mentions", "on", CommandOperation.PREFERENCE, "set", True),
         ("teasing", "off", CommandOperation.PREFERENCE, "set", False),
+        ("safety", "", CommandOperation.READ, "status", None),
+        ("safety", "status", CommandOperation.READ, "status", None),
+        (
+            "safety",
+            "strict",
+            CommandOperation.CONFIGURATION,
+            "set_safety_level",
+            "strict",
+        ),
+        (
+            "safety",
+            "standard",
+            CommandOperation.CONFIGURATION,
+            "set_safety_level",
+            "standard",
+        ),
+        (
+            "safety",
+            "relaxed",
+            CommandOperation.CONFIGURATION,
+            "set_safety_level",
+            "relaxed",
+        ),
+        (
+            "safety",
+            "teasing 3",
+            CommandOperation.CONFIGURATION,
+            "set_teasing_cap",
+            "3",
+        ),
+        ("protect", "", CommandOperation.CONFIGURATION, "protect", True),
+        ("unprotect", "", CommandOperation.CONFIGURATION, "unprotect", False),
     ],
 )
 def test_every_accepted_command_form_has_a_typed_result(
@@ -167,6 +199,13 @@ def test_every_accepted_command_form_has_a_typed_result(
         ("stickers", "maybe"),
         ("mentions", "other-user off"),
         ("teasing", "off extra"),
+        ("safety", "strict extra"),
+        ("safety", "teasing"),
+        ("safety", "teasing 0"),
+        ("safety", "teasing 10"),
+        ("safety", "teasing two"),
+        ("protect", "someone"),
+        ("unprotect", "target"),
     ],
 )
 def test_malformed_command_forms_are_usage_errors(name: str, arguments: str) -> None:

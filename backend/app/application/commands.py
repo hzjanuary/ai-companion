@@ -30,6 +30,7 @@ class CommandRequest:
 _PROFILE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:@[1-9][0-9]*)?$")
 _MODES = {"mention_only", "mention_and_name", "ambient_selective"}
 _MEMORY_PUBLIC_ID = re.compile(r"^[A-Za-z0-9]{8,24}$")
+_SAFETY_LEVELS = {"strict", "standard", "relaxed"}
 
 
 def parse_command(name: str, arguments: str) -> CommandRequest:
@@ -105,6 +106,34 @@ def parse_command(name: str, arguments: str) -> CommandRequest:
             if arguments == "confirm"
             else _usage(name)
         )
+    if name == "safety":
+        if not arguments or arguments == "status":
+            return CommandRequest(name, CommandOperation.READ)
+        prefix, separator, rest = arguments.partition(" ")
+        if prefix in _SAFETY_LEVELS and not separator:
+            return CommandRequest(
+                name,
+                CommandOperation.CONFIGURATION,
+                "set_safety_level",
+                prefix,
+            )
+        if prefix == "teasing" and separator and rest and " " not in rest:
+            if rest.isdigit() and 1 <= int(rest) <= 9:
+                return CommandRequest(
+                    name,
+                    CommandOperation.CONFIGURATION,
+                    "set_teasing_cap",
+                    rest,
+                )
+        return _usage(name)
+    if name in {"protect", "unprotect"}:
+        return (
+            CommandRequest(
+                name, CommandOperation.CONFIGURATION, name, name == "protect"
+            )
+            if not arguments
+            else _usage(name)
+        )
     return CommandRequest(name, CommandOperation.UNKNOWN)
 
 
@@ -121,9 +150,11 @@ def command_response(
         ),
         "help": (
             "Xem: /start, /status. Ca nhan: /mentions, /teasing. Quan tri nhom: "
-            "/mode, /frequency, /quiet, /resume, /personality, /stickers.",
+            "/mode, /frequency, /quiet, /resume, /personality, /stickers, "
+            "/safety, /protect.",
             "View: /start, /status. Personal: /mentions, /teasing. Group admins: "
-            "/mode, /frequency, /quiet, /resume, /personality, /stickers.",
+            "/mode, /frequency, /quiet, /resume, /personality, /stickers, "
+            "/safety, /protect.",
         ),
         "usage": ("Cu phap khong hop le. Dung /help.", "Invalid syntax. Use /help."),
         "unknown": (
@@ -197,6 +228,18 @@ def command_response(
         "forget_me_unchanged": (
             "Yeu cau xoa du lieu da duoc xu ly truoc do.",
             "Your deletion request was already processed.",
+        ),
+        "member_missing": (
+            "Reply vao tin nhan cua thanh vien can quan ly.",
+            "Reply to the member you want to manage.",
+        ),
+        "protect_done": (
+            "Da bao ve thanh vien nay; January se khong nham vao ho.",
+            "This member is now protected; January will not target them.",
+        ),
+        "unprotect_done": (
+            "Da go bao ve cho thanh vien nay.",
+            "Protection removed for this member.",
         ),
     }
     base = templates.get(code, templates["safe_failure"])[1 if english else 0]

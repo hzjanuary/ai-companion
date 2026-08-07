@@ -6,7 +6,7 @@ import socket
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.application.ports.outbound import StickerAssetResolver
 from app.application.ports.platform import (
@@ -32,6 +32,7 @@ from app.domain.persistence import AssistantStatus
 from app.domain.rate_limit import RateLimitDecision, RateLimitOperation
 from app.domain.recovery import RecoveryDisposition, RecoveryReason
 from app.domain.safety import (
+    InteractionKind,
     SafetyDecision,
     SafetyOutcome,
     SafetyPolicyVersion,
@@ -183,7 +184,9 @@ async def consume_once(
                         error_category="sticker_not_configured",
                     )
                     continue
-                if not await _safety_allows_delivery(database, action):
+                if (
+                    reason := await _safety_recheck(database, action, settings)
+                ) is not None:
                     await safety_repository.record_decision(
                         planning_job_id=None,
                         response_plan_id=action.response_plan_id,
@@ -192,8 +195,14 @@ async def consume_once(
                             SafetyPolicyVersion.V1,
                             SafetyStage.PRE_DELIVERY,
                             SafetyOutcome.SILENT,
-                            SafetyReasonCode.TEASING_TARGET_OPTED_OUT,
+                            reason,
                         ),
+                    )
+                    recorder.increment(
+                        "january_safety_decisions_total",
+                        stage=SafetyStage.PRE_DELIVERY.value,
+                        outcome=SafetyOutcome.SILENT.value,
+                        reason=reason.value,
                     )
                     await repository.finalize(
                         action.id,
@@ -279,6 +288,12 @@ async def consume_once(
                         SafetyStage.PRE_DELIVERY,
                         SafetyOutcome.ALLOW,
                     ),
+                )
+                recorder.increment(
+                    "january_safety_decisions_total",
+                    stage=SafetyStage.PRE_DELIVERY.value,
+                    outcome=SafetyOutcome.ALLOW.value,
+                    reason="none",
                 )
                 if not await repository.mark_external_started(action.id, owner):
                     continue
@@ -379,6 +394,7 @@ async def _resolve(
                     ParticipantModel.id.in_(identifiers),
                     ParticipantModel.mention_allowed.is_(True),
                     ParticipantModel.privacy_deleted_at.is_(None),
+                    ParticipantModel.protected_at.is_(None),
                 )
             )
         )
@@ -389,29 +405,90 @@ async def _resolve(
         return conversation, reply, participants
 
 
-async def _safety_allows_delivery(
-    database: Database, action: OutboundActionModel
-) -> bool:
-    """Recheck persisted teasing targets immediately before Telegram I/O."""
+async def _safety_recheck(
+    database: Database, action: OutboundActionModel, settings: Settings
+) -> SafetyReasonCode | None:
+    """Recheck persisted teasing targets immediately before Telegram I/O.
+
+    Returns the deterministic reason when the action must not be delivered, or
+    None when targeting is still safe. Rechecks opt-out, privacy deletion,
+    protection (FR-03/FR-10), and the per-group teasing cap (FR-09).
+    """
 
     async with database.session_factory() as session:
         plan = await session.get(ResponsePlanModel, action.response_plan_id)
         if plan is None or plan.interaction_kind.value != "teasing":
-            return True
+            return None
         identifiers = [UUID(value) for value in plan.teasing_target_participant_ids]
+        identifier_strings = [str(identifier) for identifier in identifiers]
         if not identifiers:
-            return False
-        allowed = list(
+            return SafetyReasonCode.TEASING_TARGET_OPTED_OUT
+        targets = list(
             await session.scalars(
-                select(ParticipantModel.id).where(
+                select(ParticipantModel).where(
                     ParticipantModel.conversation_id == action.conversation_id,
                     ParticipantModel.id.in_(identifiers),
-                    ParticipantModel.teasing_allowed.is_(True),
-                    ParticipantModel.privacy_deleted_at.is_(None),
                 )
             )
         )
-        return len(allowed) == len(identifiers)
+        by_id = {participant.id: participant for participant in targets}
+        if len(by_id) != len(identifiers):
+            return SafetyReasonCode.TEASING_TARGET_OPTED_OUT
+        if any(
+            by_id[identifier].privacy_deleted_at is not None
+            or not by_id[identifier].teasing_allowed
+            for identifier in identifiers
+        ):
+            return SafetyReasonCode.TEASING_TARGET_OPTED_OUT
+        if any(
+            by_id[identifier].protected_at is not None for identifier in identifiers
+        ):
+            return SafetyReasonCode.TARGET_PROTECTED
+        if not settings.safety_moderation_enabled:
+            return None
+        revision = None
+        conversation = await session.get(ConversationModel, action.conversation_id)
+        if (
+            conversation is not None
+            and conversation.current_configuration_revision_id is not None
+        ):
+            revision = await session.get(
+                ConversationConfigurationRevisionModel,
+                conversation.current_configuration_revision_id,
+            )
+        cap = revision.teasing_cap if revision is not None else None
+        if cap is None or cap < 0:
+            return None
+        window_start = datetime.now(UTC) - timedelta(
+            seconds=settings.safety_signal_window_seconds
+        )
+        delivered_toward = await session.scalar(
+            select(func.count())
+            .select_from(OutboundActionModel)
+            .join(
+                ResponsePlanModel,
+                OutboundActionModel.response_plan_id == ResponsePlanModel.id,
+            )
+            .where(
+                OutboundActionModel.conversation_id == action.conversation_id,
+                OutboundActionModel.status == OutboundActionStatus.DELIVERED,
+                OutboundActionModel.id != action.id,
+                OutboundActionModel.completed_at.is_not(None),
+                OutboundActionModel.completed_at >= window_start,
+                ResponsePlanModel.interaction_kind == InteractionKind.TEASING,
+                or_(
+                    *(
+                        ResponsePlanModel.teasing_target_participant_ids.contains(
+                            [identifier_string]
+                        )
+                        for identifier_string in identifier_strings
+                    )
+                ),
+            )
+        )
+        if int(delivered_toward or 0) >= cap:
+            return SafetyReasonCode.TEASING_CAP_EXCEEDED
+        return None
 
 
 async def _ambient_delivery_allowed(

@@ -1860,6 +1860,7 @@ SPEC-020 Production Deployment, Secrets, and Runtime Operations
 SPEC-021 Authenticated Operator and Group Administration Control Plane
 SPEC-022 Telegram Production Integration and Live Acceptance
 SPEC-023 Production Observability, SLOs, Alerting, and Incident Operations
+SPEC-024 Safety Moderation, Abuse Prevention, and User Protection
 ```
 
 SPEC-014 is `DEFERRED / BLOCKED_ON_EXTERNAL_PREREQUISITE`: its Phase 1
@@ -1877,8 +1878,16 @@ catalog, SLO targets with a rolling 28-day error budget, content-safe alert
 rules, and incident operations are declared in code and documentation with no
 schema migration; its proposed availability, delivery-confirmation, and
 recovery-backlog objectives and notification channels remain operating-owner
-approvals. SPEC-014 remains deferred and no Zalo runtime is authorized. Next
-bounded task: SPEC-024.
+approvals. SPEC-024 is implemented as an approved candidate: the safety
+moderation, abuse prevention, and user protection contract in
+`docs/product/specs/SPEC-024-safety-moderation-abuse-prevention-and-user-protection.md`
+is enforced in the response-planning and outbound-delivery workers, exposed
+through the `/safety`, `/protect`, and `/unprotect` commands and content-free
+control-plane review endpoints, and backed by the additive `0015_safety_moderation`
+migration and `safety_risk` alert rules; its threshold objectives remain
+operating-owner approvals. SPEC-014 remains deferred
+and no Zalo runtime is authorized. Next bounded task: the SPEC-024
+operating-owner approval and live observation phase.
 
 Each SPEC should define:
 

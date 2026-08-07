@@ -16,6 +16,7 @@ from app.application.ports.telemetry import MetricsRecorder, NoOpMetricsRecorder
 from app.application.prompting import build_generation_request
 from app.application.rate_limit_rules import generation_rules, provider_rule
 from app.application.response_plan import ResponsePlanCandidate, ResponsePlanPolicy
+from app.application.safety import SafetyModerationService
 from app.core.config import Settings
 from app.domain.ambient import (
     AMBIENT_POLICY_VERSION,
@@ -35,11 +36,13 @@ from app.domain.planning import (
 from app.domain.rate_limit import RateLimitDecision, RateLimitOperation
 from app.domain.recovery import RecoveryDisposition, RecoveryKind, RecoveryReason
 from app.domain.safety import (
+    ProtectionAction,
     SafetyDecision,
     SafetyOutcome,
     SafetyPolicyVersion,
     SafetyReasonCode,
     SafetyStage,
+    protection_notice,
 )
 from app.infrastructure.concurrency import RedisConcurrencyLimiter
 from app.infrastructure.concurrency_provider import ConcurrencyLimitedProvider
@@ -55,6 +58,9 @@ from app.infrastructure.database.personality import revision_overrides, version_
 from app.infrastructure.database.planning import SqlAlchemyPlanningRepository
 from app.infrastructure.database.recovery import SqlAlchemyRecoveryRepository
 from app.infrastructure.database.safety import SqlAlchemySafetyRepository
+from app.infrastructure.database.safety_protection import (
+    SqlAlchemySafetyModerationRepository,
+)
 from app.infrastructure.model_providers import create_model_provider
 from app.infrastructure.rate_limit import RateLimitUnavailable, RedisRateLimiter
 from app.infrastructure.telemetry import InMemoryMetricsRecorder
@@ -110,6 +116,10 @@ async def consume_once(
         else None
     )
     safety_repository = SqlAlchemySafetyRepository(database.session_factory)
+    moderation = SafetyModerationService(
+        settings,
+        SqlAlchemySafetyModerationRepository(database.session_factory),
+    )
     for _ in claimed:
         recorder.increment("january_planning_jobs_total", outcome="claimed")
     primary = primary_provider or create_model_provider(
@@ -320,6 +330,87 @@ async def consume_once(
                     continue
 
             participant_id = context.current.participant_id
+            if participant_id is not None:
+                protective_action = await moderation.evaluate_and_enforce(
+                    conversation_id=job.conversation_id,
+                    participant_id=participant_id,
+                    safety_level=revision.safety_level,
+                )
+                if protective_action is not None:
+                    recorder.increment(
+                        "january_safety_protective_actions_total",
+                        action=protective_action.value,
+                    )
+                state = await moderation.protection_state(participant_id)
+                interaction_mode = state.interaction_mode if state is not None else None
+                if (
+                    protective_action == ProtectionAction.PAUSE_INTERACTION
+                    or interaction_mode == ProtectionAction.PAUSE_INTERACTION.value
+                ):
+                    await safety_repository.record_decision(
+                        planning_job_id=job.id,
+                        response_plan_id=None,
+                        conversation_id=job.conversation_id,
+                        decision=SafetyDecision(
+                            SafetyPolicyVersion.V1,
+                            SafetyStage.PRE_GENERATION,
+                            SafetyOutcome.SILENT,
+                        ),
+                    )
+                    recorder.increment(
+                        "january_safety_decisions_total",
+                        stage=SafetyStage.PRE_GENERATION.value,
+                        outcome=SafetyOutcome.SILENT.value,
+                        reason="none",
+                    )
+                    await repository.complete(
+                        job.id,
+                        lease_owner,
+                        None,
+                        None,
+                        None,
+                        None,
+                        job.prompt_version,
+                        job.response_schema_version,
+                    )
+                    continue
+                if interaction_mode == ProtectionAction.REDUCE_INTERACTION.value:
+                    await safety_repository.record_decision(
+                        planning_job_id=job.id,
+                        response_plan_id=None,
+                        conversation_id=job.conversation_id,
+                        decision=SafetyDecision(
+                            SafetyPolicyVersion.V1,
+                            SafetyStage.PRE_GENERATION,
+                            SafetyOutcome.SILENT,
+                        ),
+                    )
+                    recorder.increment(
+                        "january_safety_decisions_total",
+                        stage=SafetyStage.PRE_GENERATION.value,
+                        outcome=SafetyOutcome.SILENT.value,
+                        reason="none",
+                    )
+                    await repository.complete(
+                        job.id,
+                        lease_owner,
+                        ResponsePlanCandidate(
+                            should_respond=True,
+                            reason_code=PlanReasonCode.ACKNOWLEDGEMENT,
+                            text=protection_notice(
+                                "en" if version.primary_language == "en" else "vi"
+                            ),
+                            reply_to_message_id=job.message_id,
+                            confidence=1.0,
+                            language="en" if version.primary_language == "en" else "vi",
+                        ),
+                        None,
+                        None,
+                        None,
+                        job.prompt_version,
+                        job.response_schema_version,
+                    )
+                    continue
             await safety_repository.record_decision(
                 planning_job_id=job.id,
                 response_plan_id=None,
@@ -329,6 +420,12 @@ async def consume_once(
                     SafetyStage.PRE_GENERATION,
                     SafetyOutcome.ALLOW,
                 ),
+            )
+            recorder.increment(
+                "january_safety_decisions_total",
+                stage=SafetyStage.PRE_GENERATION.value,
+                outcome=SafetyOutcome.ALLOW.value,
+                reason="none",
             )
             if limiter is not None:
                 try:
@@ -380,6 +477,12 @@ async def consume_once(
                             SafetyOutcome.SILENT,
                             SafetyReasonCode.RATE_LIMITED,
                         ),
+                    )
+                    recorder.increment(
+                        "january_safety_decisions_total",
+                        stage=SafetyStage.PRE_GENERATION.value,
+                        outcome=SafetyOutcome.SILENT.value,
+                        reason=SafetyReasonCode.RATE_LIMITED.value,
                     )
                     await repository.release_for_rate_limit(
                         job.id,
@@ -491,6 +594,12 @@ async def consume_once(
                         SafetyReasonCode.RATE_LIMITED,
                     ),
                 )
+                recorder.increment(
+                    "january_safety_decisions_total",
+                    stage=SafetyStage.PRE_GENERATION.value,
+                    outcome=SafetyOutcome.SILENT.value,
+                    reason=SafetyReasonCode.RATE_LIMITED.value,
+                )
                 await repository.release_for_rate_limit(
                     job.id,
                     lease_owner,
@@ -579,6 +688,21 @@ async def consume_once(
                     transformed=outcome.candidate is not None
                     and outcome.candidate.text is not None
                     and outcome.candidate.text.startswith("I will keep"),
+                ),
+            )
+            recorder.increment(
+                "january_safety_decisions_total",
+                stage=SafetyStage.POST_GENERATION.value,
+                outcome=(
+                    SafetyOutcome.ALLOW.value
+                    if outcome.candidate is not None
+                    else SafetyOutcome.REFUSE.value
+                ),
+                reason=(
+                    SafetyReasonCode.MODEL_REFUSAL.value
+                    if outcome.provider_error
+                    and outcome.provider_error.category.value == "safety_refusal"
+                    else "none"
                 ),
             )
         return len(claimed)

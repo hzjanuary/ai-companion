@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.application.personality import PersonalityOverrides
 from app.domain.ambient import AmbientFrequency
 from app.domain.persistence import PersonalityProfileStatus, ResponseMode
+from app.domain.safety import SafetyLevel
 from app.infrastructure.database.models import (
     ConversationConfigurationRevisionModel,
     ConversationModel,
@@ -28,6 +29,8 @@ class ConfigurationChange:
     response_mode: ResponseMode | None = None
     stickers_enabled: bool | None = None
     ambient_frequency: AmbientFrequency | None = None
+    safety_level: SafetyLevel | None = None
+    teasing_cap: int | None = None
     overrides: PersonalityOverrides = PersonalityOverrides()
     source: str = "operator_cli"
     reason_code: str | None = None
@@ -123,6 +126,14 @@ class SqlAlchemyGroupConfigurationService:
                     == current.stickers_enabled
                     and (change.ambient_frequency or current.ambient_frequency)
                     == current.ambient_frequency
+                    and (change.safety_level or current.safety_level)
+                    == current.safety_level
+                    and (
+                        change.teasing_cap
+                        if change.teasing_cap is not None
+                        else current.teasing_cap
+                    )
+                    == current.teasing_cap
                     and all(
                         getattr(current, key) == value for key, value in values.items()
                     )
@@ -139,6 +150,10 @@ class SqlAlchemyGroupConfigurationService:
                     else current.stickers_enabled,
                     ambient_frequency=change.ambient_frequency
                     or current.ambient_frequency,
+                    safety_level=change.safety_level or current.safety_level,
+                    teasing_cap=change.teasing_cap
+                    if change.teasing_cap is not None
+                    else current.teasing_cap,
                     change_source=change.source,
                     reason_code=change.reason_code,
                     actor_participant_id=change.actor_participant_id,

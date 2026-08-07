@@ -36,6 +36,7 @@ from app.infrastructure.database.models import (
     AssistantModel,
     ConversationConfigurationRevisionModel,
     ConversationModel,
+    MessageModel,
     ParticipantModel,
     PersonalityProfileModel,
     PersonalityProfileVersionModel,
@@ -177,6 +178,58 @@ async def consume_once(
                 )
                 continue
             if request.operation == CommandOperation.CONFIGURATION:
+                if request.name in {"protect", "unprotect"}:
+                    from app.infrastructure.database.safety_protection import (
+                        SqlAlchemySafetyModerationRepository,
+                    )
+
+                    target_participant_id = await _protection_target(
+                        database, conversation, job
+                    )
+                    if target_participant_id is None:
+                        await _finish(
+                            repository,
+                            job,
+                            lease_owner,
+                            "member_missing",
+                            language,
+                            authorization,
+                        )
+                        continue
+                    safety_repository = SqlAlchemySafetyModerationRepository(
+                        database.session_factory
+                    )
+                    if request.name == "protect":
+                        await safety_repository.protect(
+                            conversation_id=conversation.id,
+                            participant_id=target_participant_id,
+                            actor_participant_id=participant.id,
+                            source="telegram_command",
+                        )
+                        await _finish(
+                            repository,
+                            job,
+                            lease_owner,
+                            "protect_done",
+                            language,
+                            authorization,
+                        )
+                    else:
+                        await safety_repository.restore_targeting(
+                            conversation_id=conversation.id,
+                            participant_id=target_participant_id,
+                            actor_participant_id=participant.id,
+                            source="telegram_command",
+                        )
+                        await _finish(
+                            repository,
+                            job,
+                            lease_owner,
+                            "unprotect_done",
+                            language,
+                            authorization,
+                        )
+                    continue
                 if request.name == "personality":
                     profile_version_id, profile_code = await _resolve_profile_version(
                         database,
@@ -251,6 +304,7 @@ async def consume_once(
                 "stickers",
                 "mentions",
                 "teasing",
+                "safety",
             }:
                 code = "status"
             detail = await _read_detail(
@@ -627,6 +681,30 @@ async def _resolve_profile_version(
         )
 
 
+async def _protection_target(
+    database: Database,
+    conversation: ConversationModel,
+    job: object,
+) -> UUID | None:
+    """Resolve the reply-to participant for /protect and /unprotect (FR-09)."""
+
+    from app.infrastructure.database.models import TelegramCommandJobModel
+
+    assert isinstance(job, TelegramCommandJobModel)
+    async with database.session_factory() as session:
+        message = await session.get(MessageModel, job.message_id)
+        if message is None or message.reply_to_message_id is None:
+            return None
+        target = await session.get(MessageModel, message.reply_to_message_id)
+        if (
+            target is None
+            or target.participant_id is None
+            or target.conversation_id != conversation.id
+        ):
+            return None
+        return target.participant_id
+
+
 async def _read_detail(
     database: Database,
     conversation: ConversationModel,
@@ -679,6 +757,8 @@ async def _read_detail(
                 f"stickers={'on' if revision.stickers_enabled else 'off'}; "
                 f"mentions={'on' if latest_participant.mention_allowed else 'off'}; "
                 f"teasing={'on' if latest_participant.teasing_allowed else 'off'}; "
+                f"safety={revision.safety_level.value}; "
+                f"teasing_cap={revision.teasing_cap}; "
                 f"personality={personality}"
             )
         if (
@@ -715,6 +795,8 @@ async def _read_detail(
             return "on" if latest_participant.mention_allowed else "off"
         if request.name == "teasing" and latest_participant:
             return "on" if latest_participant.teasing_allowed else "off"
+        if request.name == "safety" and revision:
+            return f"{revision.safety_level.value}; teasing_cap={revision.teasing_cap}"
     return None
 
 
@@ -770,6 +852,20 @@ def _configuration_change(
 
         change = ConfigurationChange(
             ambient_frequency=AmbientFrequency(str(request.value)),
+            source="telegram_command",
+            actor_participant_id=participant.id,
+        )
+    elif request.name == "safety" and request.action == "set_safety_level":
+        from app.domain.safety import SafetyLevel
+
+        change = ConfigurationChange(
+            safety_level=SafetyLevel(str(request.value)),
+            source="telegram_command",
+            actor_participant_id=participant.id,
+        )
+    elif request.name == "safety" and request.action == "set_teasing_cap":
+        change = ConfigurationChange(
+            teasing_cap=int(str(request.value)),
             source="telegram_command",
             actor_participant_id=participant.id,
         )

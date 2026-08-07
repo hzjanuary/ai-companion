@@ -41,6 +41,7 @@ def _inputs(
     readiness_was_down: bool = False,
     exporter_stale: bool = False,
     recovery: dict[str, object] | None = None,
+    safety: dict[str, object] | None = None,
 ) -> AlertInputs:
     observations: dict[str, tuple[float, ...]] = {}
     if mention is not None:
@@ -58,6 +59,7 @@ def _inputs(
         readiness_was_down=readiness_was_down,
         metrics_exporter_stale=exporter_stale,
         metrics_exporter_last_seen_age_seconds=1800.0 if exporter_stale else None,
+        safety=safety or {},
     )
 
 
@@ -66,7 +68,7 @@ def _verdicts(inputs: AlertInputs) -> dict[str, AlertVerdict]:
 
 
 def test_alert_rule_catalog_declares_bounded_policy() -> None:
-    assert len(ALERT_RULES) == 11
+    assert len(ALERT_RULES) == 15
     for rule in ALERT_RULES:
         assert rule.name and rule.description
         assert rule.rule_class in {
@@ -74,6 +76,7 @@ def test_alert_rule_catalog_declares_bounded_policy() -> None:
             "recovery_risk",
             "readiness",
             "staleness",
+            "safety_risk",
         }
         assert rule.detection_latency_seconds > 0
         assert rule.debounce_seconds >= 0
@@ -140,6 +143,47 @@ def test_recovery_risk_alerts() -> None:
     assert verdicts["recovery_stale_leases"].severity == Severity.SEV2
     assert verdicts["worker_backlog_oldest_pending"].severity == Severity.SEV3
     assert "recovery_dead_letter_backlog" not in verdicts
+
+
+def test_safety_risk_alerts() -> None:
+    quiet = _verdicts(_inputs(safety={"fail_closed_count": 0}))
+    assert "safety_fail_closed_surge" not in quiet
+    assert "safety_protective_actions_surge" not in quiet
+    assert "safety_escalation_high_severity" not in quiet
+
+    surge = _verdicts(
+        _inputs(
+            safety={
+                "fail_closed_count": 4,
+                "protective_actions_count": 6,
+                "high_severity_signals": 3,
+            }
+        )
+    )
+    assert surge["safety_fail_closed_surge"].severity == Severity.SEV2
+    assert surge["safety_protective_actions_surge"].severity == Severity.SEV2
+    assert surge["safety_escalation_high_severity"].severity == Severity.SEV1
+
+    review_growth = _verdicts(
+        _inputs(
+            safety={
+                "open_review_items": 25,
+                "oldest_open_review_age_seconds": 5 * 3600,
+            }
+        )
+    )
+    assert review_growth["safety_review_queue_growth"].severity == Severity.SEV3
+    assert "safety_review_queue_growth" not in _verdicts(
+        _inputs(safety={"open_review_items": 3})
+    )
+
+
+def test_safety_alert_payloads_are_content_safe() -> None:
+    verdict = _verdicts(_inputs(safety={"protective_actions_count": 6}))[
+        "safety_protective_actions_surge"
+    ]
+    payload = render_alert_payload(verdict)
+    assert_content_safe(payload)
 
 
 def test_readiness_and_recovery_alerts() -> None:

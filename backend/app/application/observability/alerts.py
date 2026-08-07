@@ -11,7 +11,7 @@ FR-03/NFR-03 and the approved per-severity policy.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import IntEnum
 from typing import Final
@@ -30,6 +30,24 @@ SLOW_BURN_THRESHOLD: Final = 6.0
 STALENESS_THRESHOLD_SECONDS: Final = 900.0
 
 DEFAULT_OWNERS: Final = ("operating_owner", "incident_contact", "rollback_authority")
+
+
+@dataclass(frozen=True)
+class SafetyAlertObjective:
+    """Content-free safety escalation thresholds (SPEC-024 FR-11).
+
+    All values are bounded counts/ages over the fail-closed burst window; they
+    never reference participants, messages, or content.
+    """
+
+    fail_closed_threshold: int = 3
+    protective_actions_threshold: int = 5
+    review_queue_depth_threshold: int = 20
+    oldest_open_review_max_age_seconds: int = 4 * 3600
+    high_severity_threshold: int = 3
+
+
+SAFETY_ALERT_OBJECTIVE: Final = SafetyAlertObjective()
 
 
 class Severity(IntEnum):
@@ -188,6 +206,42 @@ ALERT_RULES: Final = (
         debounce_seconds=900.0,
         detection_latency_seconds=900.0,
     ),
+    AlertRule(
+        name="safety_fail_closed_surge",
+        rule_class="safety_risk",
+        description="Rate of fail-closed stricter defaults exceeds threshold.",
+        natural_severity=Severity.SEV2,
+        severity_cap=Severity.SEV2,
+        debounce_seconds=900.0,
+        detection_latency_seconds=900.0,
+    ),
+    AlertRule(
+        name="safety_protective_actions_surge",
+        rule_class="safety_risk",
+        description="Sustained protective enforcement bursts require review.",
+        natural_severity=Severity.SEV2,
+        severity_cap=Severity.SEV2,
+        debounce_seconds=900.0,
+        detection_latency_seconds=900.0,
+    ),
+    AlertRule(
+        name="safety_review_queue_growth",
+        rule_class="safety_risk",
+        description="Review queue depth or oldest pending item grows.",
+        natural_severity=Severity.SEV3,
+        severity_cap=Severity.SEV3,
+        debounce_seconds=1800.0,
+        detection_latency_seconds=3600.0,
+    ),
+    AlertRule(
+        name="safety_escalation_high_severity",
+        rule_class="safety_risk",
+        description="Sustained high-severity signals toward a member.",
+        natural_severity=Severity.SEV1,
+        severity_cap=Severity.SEV1,
+        debounce_seconds=300.0,
+        detection_latency_seconds=900.0,
+    ),
 )
 
 ALERT_RULES_BY_NAME: Final = {rule.name: rule for rule in ALERT_RULES}
@@ -205,6 +259,7 @@ class AlertInputs:
     readiness_was_down: bool = False
     metrics_exporter_stale: bool = False
     metrics_exporter_last_seen_age_seconds: float | None = None
+    safety: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -225,6 +280,8 @@ def evaluate_alerts(inputs: AlertInputs, now: datetime) -> list[AlertVerdict]:
             verdict = _evaluate_burn_rule(rule, inputs, now)
         elif rule.rule_class == "recovery_risk":
             verdict = _evaluate_recovery_rule(rule, inputs, now)
+        elif rule.rule_class == "safety_risk":
+            verdict = _evaluate_safety_rule(rule, inputs, now)
         elif rule.name == "readiness_dependency":
             verdict = _evaluate_readiness_dependency(inputs, now)
         elif rule.name == "readiness_recovery":
@@ -430,6 +487,90 @@ def _evaluate_recovery_rule(
             metric_values={
                 "oldest_pending_age_seconds": age,
                 "cap_seconds": objective.oldest_pending_max_age_seconds,
+            },
+            owner=DEFAULT_OWNERS[0],
+            escalation_step=0,
+        )
+    return None
+
+
+def _safety_int(safety: dict[str, object], key: str) -> int:
+    value = safety.get(key)
+    return int(value) if isinstance(value, int | float) else 0
+
+
+def _evaluate_safety_rule(
+    rule: AlertRule, inputs: AlertInputs, now: datetime
+) -> AlertVerdict | None:
+    objective = SAFETY_ALERT_OBJECTIVE
+    safety = inputs.safety
+    if rule.name == "safety_fail_closed_surge":
+        count = _safety_int(safety, "fail_closed_count")
+        if count < objective.fail_closed_threshold:
+            return None
+        return AlertVerdict(
+            rule=rule.name,
+            state="alerting",
+            severity=_cap(rule.natural_severity, rule.severity_cap),
+            fired_at=now,
+            metric_values={
+                "fail_closed_count": count,
+                "threshold": objective.fail_closed_threshold,
+            },
+            owner=DEFAULT_OWNERS[0],
+            escalation_step=0,
+        )
+    if rule.name == "safety_protective_actions_surge":
+        count = _safety_int(safety, "protective_actions_count")
+        if count < objective.protective_actions_threshold:
+            return None
+        return AlertVerdict(
+            rule=rule.name,
+            state="alerting",
+            severity=_cap(rule.natural_severity, rule.severity_cap),
+            fired_at=now,
+            metric_values={
+                "protective_actions_count": count,
+                "threshold": objective.protective_actions_threshold,
+            },
+            owner=DEFAULT_OWNERS[0],
+            escalation_step=0,
+        )
+    if rule.name == "safety_review_queue_growth":
+        depth = _safety_int(safety, "open_review_items")
+        age = safety.get("oldest_open_review_age_seconds")
+        oldest_age = int(age) if isinstance(age, int | float) else None
+        if depth < objective.review_queue_depth_threshold and (
+            oldest_age is None
+            or oldest_age < objective.oldest_open_review_max_age_seconds
+        ):
+            return None
+        return AlertVerdict(
+            rule=rule.name,
+            state="alerting",
+            severity=_cap(rule.natural_severity, rule.severity_cap),
+            fired_at=now,
+            metric_values={
+                "open_review_items": depth,
+                "depth_threshold": objective.review_queue_depth_threshold,
+                "oldest_open_age_seconds": oldest_age,
+                "age_threshold_seconds": objective.oldest_open_review_max_age_seconds,
+            },
+            owner=DEFAULT_OWNERS[0],
+            escalation_step=0,
+        )
+    if rule.name == "safety_escalation_high_severity":
+        count = _safety_int(safety, "high_severity_signals")
+        if count < objective.high_severity_threshold:
+            return None
+        return AlertVerdict(
+            rule=rule.name,
+            state="alerting",
+            severity=_cap(rule.natural_severity, rule.severity_cap),
+            fired_at=now,
+            metric_values={
+                "high_severity_signals": count,
+                "threshold": objective.high_severity_threshold,
             },
             owner=DEFAULT_OWNERS[0],
             escalation_step=0,

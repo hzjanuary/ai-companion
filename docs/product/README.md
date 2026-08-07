@@ -39,6 +39,7 @@ contract, implementation, and executable tests.
 - [SPEC-021 Authenticated Operator and Group Administration Control Plane](specs/SPEC-021-authenticated-operator-and-group-administration-control-plane.md)
 - [SPEC-022 Telegram Production Integration and Live Acceptance](specs/SPEC-022-telegram-production-integration-and-live-acceptance.md)
 - [SPEC-023 Production Observability, SLOs, Alerting, and Incident Operations](specs/SPEC-023-production-observability-slos-alerting-and-incident-operations.md)
+- [SPEC-024 Safety Moderation, Abuse Prevention, and User Protection](specs/SPEC-024-safety-moderation-abuse-prevention-and-user-protection.md)
 - [Telegram Capabilities](telegram-capabilities.md)
 
 ## Roadmap State
@@ -52,7 +53,13 @@ candidate: the production observability contract (SLI catalog, SLO targets and
 error budget over a rolling 28-day window, content-safe alert rules, and
 incident operations) is declared in code and documentation with no schema
 migration, pending Product Owner and operating-owner approval of the proposed
-objectives and notification channels.
+objectives and notification channels. SPEC-024 is implemented as an approved
+candidate: the safety moderation, abuse prevention, and user protection
+contract is enforced in the response-planning and outbound-delivery workers,
+exposed through the `/safety`, `/protect`, and `/unprotect` commands and
+content-free control-plane review endpoints, and backed by the additive
+`0015_safety_moderation` migration and `safety_risk` alert rules; its threshold
+objectives remain operating-owner approvals.
 
 ## Update Rule
 

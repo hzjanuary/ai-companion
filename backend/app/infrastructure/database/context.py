@@ -224,6 +224,7 @@ class SqlAlchemyConversationContextReader:
             privacy_deleted=participant.privacy_deleted_at is not None
             if participant
             else False,
+            protected=participant.protected_at is not None if participant else False,
         )
 
     @staticmethod

@@ -65,7 +65,7 @@ class Database:
                     )
                     return (
                         isinstance(revision, str)
-                        and revision == "0014_authenticated_control_plane"
+                        and revision == "0015_safety_moderation"
                     )
         except Exception:
             return False

@@ -45,6 +45,10 @@ breach).
 | `readiness_dependency` | readiness | `/ready` reports a bounded required dependency unavailable | Sev1 | Sev1 | 5 min |
 | `readiness_recovery` | readiness | `/ready` recovered after degradation | Sev4 | Sev4 | 5 min |
 | `alerting_staleness` | staleness | metrics exporter/collection stale or lost | Sev2 | Sev2 | 15 min |
+| `safety_fail_closed_surge` | safety_risk | fail-closed stricter defaults in burst window >= 3 | Sev2 | Sev2 | 15 min |
+| `safety_protective_actions_surge` | safety_risk | protective enforcement actions in burst window >= 5 | Sev2 | Sev2 | 15 min |
+| `safety_review_queue_growth` | safety_risk | open review items >= 20 or oldest open item > 4 h | Sev3 | Sev3 | 1 h |
+| `safety_escalation_high_severity` | safety_risk | high-severity safety signals in burst window >= 3 | Sev1 | Sev1 | 15 min |
 
 Readiness versus worker backlog (FR-12): API readiness degradation alerts only
 on `/ready` dependency failures (`readiness_dependency`); worker backlog and
@@ -52,6 +56,13 @@ stuck durable work alert through recovery and worker metrics
 (`recovery_*`, `worker_backlog_oldest_pending`), never through `/ready`.
 Optional derived services with a documented safe fallback do not make the API
 unready and are signaled through their own worker metrics.
+
+Safety escalation (SPEC-024 FR-11): the `safety_*` rules evaluate content-free
+aggregates over the fail-closed burst window and review queue depth. They page
+the operating owner on sustained fail-closed or high-severity surges and keep
+review-queue growth at Sev3. All safety rule payloads carry counts and ages
+only; they never reference participants, messages, prompts, memories, or raw
+platform identifiers.
 
 ## Acknowledgement expiry and escalation (FR-03)
 

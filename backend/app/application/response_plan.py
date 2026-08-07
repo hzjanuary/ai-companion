@@ -100,6 +100,7 @@ class ResponsePlanPolicy:
             for identifier in mentions
             if allowed_participants[identifier].mention_allowed
             and not allowed_participants[identifier].privacy_deleted
+            and not allowed_participants[identifier].protected
         )
         text = candidate.text
         if text is not None:
@@ -130,6 +131,7 @@ class ResponsePlanPolicy:
                 identifier in allowed_participants
                 and allowed_participants[identifier].teasing_allowed
                 and not allowed_participants[identifier].privacy_deleted
+                and not allowed_participants[identifier].protected
                 for identifier in teasing_targets
             )
         )
